@@ -8,19 +8,9 @@ from typing_extensions import Annotated
 app = typer.Typer()
 
 
-# TODO: commands
-# - impute:
-# - input csv file
-# - req output csv file -> # should check if file exists and confirm overwrite?
-# - req int seed
-# - req column name to impute
-# - req num range e.g., 1-5, 0-5
-# - req a string/symbol to look for in the named column for sub/impute
-# - verbose flag for whether summary stats should be printed
-
+# TODO:
 # abort vs. typer.Exit(code=1)
-
-# - impute-pair should be a separate command b/c it has more delicate logic
+# impute-pair should be a separate command b/c it has more delicate logic
 
 
 @app.command()
@@ -75,7 +65,6 @@ def impute(
     rng = np.random.default_rng(seed)
     # imp_size only used for reporting
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
-    print(df.head())
     df = df.with_columns(
         pl.when(pl.col(fill_col) == fill_flag)
         .then(
@@ -88,8 +77,13 @@ def impute(
         .otherwise(pl.col(fill_col))
         .alias(fill_col)
     )
-    print(df.head())
-    print(f"Imp size: {imp_size}")
+
+    print("Finished imputing...")
+    if verbose:
+        print(
+            f"Imputed {imp_size:_} values -> {(imp_size / df.height):0.2f} of rows (n = {df.height:_}) affected"
+        )
+        print(df.head())
 
 
 if __name__ == "__main__":
