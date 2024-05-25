@@ -31,7 +31,6 @@ def preview(
     input_file = Path(input)
     if not input_file.is_file():
         err_console.print(f"File {input_file} does not exist")
-        # raise typer.Exit(code=1)
         raise typer.Abort()
 
     print(f"File: {input_file}")
@@ -41,56 +40,93 @@ def preview(
 
 @app.command()
 def impute(
-    input: Annotated[str, typer.Argument()],
-    output: Annotated[str, typer.Argument()],
-    fill_col: Annotated[str, typer.Option("--fill-col", "-c")],
-    fill_flag: Annotated[str, typer.Option("--fill-flag", "-f")],
-    fill_range: Annotated[str, typer.Option("--fill-range", "-r")],
-    seed: Annotated[int, typer.Option("--seed", "-s")],
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    input: Annotated[str, typer.Argument(help="The CSV file to impute")],
+    output: Annotated[str, typer.Argument(help="Path to save the output CSV")],
+    fill_col: Annotated[
+        str, typer.Option("--fill-col", "-c", help="Name of the column to impute")
+    ],
+    fill_flag: Annotated[
+        str,
+        typer.Option("--fill-flag", "-f", help="String flag to look for in FILL_COL"),
+    ],
+    fill_range: Annotated[
+        str,
+        typer.Option(
+            "--fill-range",
+            "-r",
+            help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
+        ),
+    ],
+    seed: Annotated[
+        int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
+    ],
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Whether to show additional imputation summary information",
+        ),
+    ] = False,
 ) -> None:
     """
-    Impute the column FILL_COL in a CSV file INPUT. Save the result to OUTPUT
+    Impute the column FILL_COL in a CSV file INPUT. Will look for the
+    symbol FILL_FLAG in FILL_COL and substitute with a random
+    integer in the closed range FILL_RANGE. Save the resulting data to OUTPUT.
     """
     input_file = Path(input)
     if not input_file.is_file():
         err_console.print(f"File {input_file} does not exist")
-        # raise typer.Exit(code=1)
         raise typer.Abort()
 
-    output_file = Path(output)
-    if output_file.is_file():
-        overwrite_file = Confirm.ask(
-            f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
-        )
-        if not overwrite_file:
-            err_console.print("Won't overwrite")
-            raise typer.Abort()
-
-    # some try/catch handling in case problems reading the file?
+    # TODO: some try/catch handling in case problems reading the file?
     df = pl.read_csv(input_file, infer_schema_length=0)
     # TODO: consider validation for whether the col is an int col?
     if fill_col not in df.columns:
         err_console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
-    fill_range_parsed = tuple(fill_range.split("-", maxsplit=1))
+    fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
+    # TODO: should validate that both are positive ints and
+    # lower bound < upper bound?
+    # what if lower bound == upper bound?
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
-        err_console.print(f"Invalid range given for --fill-range: {fill_range_parsed}")
-        # raise typer.Exit(code=1)
+        # isdigit() returns False for negative ints
+        err_console.print(
+            f"Invalid range given for --fill-range: [{fill_range_parsed[0]}, {fill_range_parsed[1]}]"
+        )
         raise typer.Abort()
-    fill_range_parsed = tuple(int(x) for x in fill_range_parsed)
+    else:
+        fill_range_lb = int(fill_range_parsed[0])
+        fill_range_ub = int(fill_range_parsed[1])
+        if fill_range_lb > fill_range_ub:
+            err_console.print(
+                f"Lower bound of --fill-range is larger than upper bound: [{fill_range_lb}, {fill_range_ub}]"
+            )
+            raise typer.Abort()
+    fill_range_int = (fill_range_lb, fill_range_ub)
+
+    # TODO: consider ordering of this check
+    output_file = Path(output)
+    if output_file.is_file():
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
+        )
+        if not overwrite_file:
+            # treat as error?
+            print("Won't overwrite")
+            raise typer.Abort()
 
     rng = np.random.default_rng(seed)
-    # imp_size only used for reporting
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         transient=True,
     ) as progress:
         progress.add_task(description="Imputing...", total=None)
+
+        t0 = time.time()
         df = df.with_columns(
             pl.when(pl.col(fill_col) == fill_flag)
             .then(
@@ -98,20 +134,23 @@ def impute(
                     # must specify size to be height of df despite not filling every row
                     # thus, we get "new" rand int per row
                     rng.integers(
-                        fill_range_parsed[0], fill_range_parsed[1] + 1, size=df.height
+                        fill_range_int[0], fill_range_int[1] + 1, size=df.height
                     )
                 ).cast(pl.String)
             )
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
         )
+        t1 = time.time()
         df.write_csv(output_file)
 
     print("[green]Finished imputing[/green]...")
+
     if verbose:
         print(
             f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
         )
+        print(f"Took ~{(t1 - t0):0.2f} s\n")
         print(df.head())
 
 
