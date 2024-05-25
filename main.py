@@ -1,11 +1,16 @@
+import time
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 import typer
+from rich import print
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from typing_extensions import Annotated
 
 app = typer.Typer()
+err_console = Console(stderr=True)
 
 
 # TODO:
@@ -14,11 +19,13 @@ app = typer.Typer()
 
 
 @app.command()
-def preview(input: Annotated[str, typer.Argument()]) -> None:
+def preview(
+    input: Annotated[str, typer.Argument()],
+    n_rows: Annotated[int, typer.Option("--num-rows", "-n")] = 10,
+) -> None:
     print(f"File: {input}")
-    # read all as str
     df = pl.read_csv(input, infer_schema_length=0)
-    print(df.head())
+    print(df.head(n_rows))
 
 
 @app.command()
@@ -36,7 +43,7 @@ def impute(
     """
     input_file = Path(input)
     if not input_file.is_file():
-        print(f"File {input_file} does not exist")
+        err_console.print(f"File {input_file} does not exist")
         # raise typer.Exit(code=1)
         raise typer.Abort()
 
@@ -46,18 +53,19 @@ def impute(
             f"{output_file} already exists. Do you want to overwrite it?"
         )
         if not overwrite_file:
-            print("Won't overwrite")
+            err_console.print("Won't overwrite")
             raise typer.Abort()
 
-    # should use Pathlib for paths instead of strings
+    # some try/catch handling in case problems reading the file?
     df = pl.read_csv(input_file, infer_schema_length=0)
+    # TODO: consider validation for whether the col is an int col?
     if fill_col not in df.columns:
-        print(f"Column {fill_col} cannot be found in {input_file}")
+        err_console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
     fill_range_parsed = tuple(fill_range.split("-", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
-        print(f"Invalid range given for --fill-range: {fill_range_parsed}")
+        err_console.print(f"Invalid range given for --fill-range: {fill_range_parsed}")
         # raise typer.Exit(code=1)
         raise typer.Abort()
     fill_range_parsed = tuple(int(x) for x in fill_range_parsed)
@@ -65,18 +73,28 @@ def impute(
     rng = np.random.default_rng(seed)
     # imp_size only used for reporting
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
-    df = df.with_columns(
-        pl.when(pl.col(fill_col) == fill_flag)
-        .then(
-            pl.lit(
-                rng.integers(
-                    fill_range_parsed[0], fill_range_parsed[1] + 1, size=df.height
-                )
-            ).cast(pl.String)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        progress.add_task(description="Imputing...", total=None)
+        df = df.with_columns(
+            pl.when(pl.col(fill_col) == fill_flag)
+            .then(
+                pl.lit(
+                    # must specify size to be height of df despite not filling every row
+                    # thus, we get "new" rand int per row
+                    rng.integers(
+                        fill_range_parsed[0], fill_range_parsed[1] + 1, size=df.height
+                    )
+                ).cast(pl.String)
+            )
+            .otherwise(pl.col(fill_col))
+            .alias(fill_col)
         )
-        .otherwise(pl.col(fill_col))
-        .alias(fill_col)
-    )
+        df.write_csv(output_file)
 
     print("Finished imputing...")
     if verbose:
