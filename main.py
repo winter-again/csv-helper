@@ -7,6 +7,7 @@ import typer
 from rich import print
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm
 from typing_extensions import Annotated
 
 app = typer.Typer()
@@ -14,7 +15,8 @@ err_console = Console(stderr=True)
 
 
 # TODO:
-# abort vs. typer.Exit(code=1)
+# abort vs. typer.Exit(code=1); I'm guessing latter is useful when the CLI
+# is composed alongside other commands
 # impute-pair should be a separate command b/c it has more delicate logic
 
 
@@ -23,8 +25,17 @@ def preview(
     input: Annotated[str, typer.Argument()],
     n_rows: Annotated[int, typer.Option("--num-rows", "-n")] = 10,
 ) -> None:
-    print(f"File: {input}")
-    df = pl.read_csv(input, infer_schema_length=0)
+    """
+    Preview a given CSV file.
+    """
+    input_file = Path(input)
+    if not input_file.is_file():
+        err_console.print(f"File {input_file} does not exist")
+        # raise typer.Exit(code=1)
+        raise typer.Abort()
+
+    print(f"File: {input_file}")
+    df = pl.read_csv(input_file, infer_schema_length=0)
     print(df.head(n_rows))
 
 
@@ -49,8 +60,8 @@ def impute(
 
     output_file = Path(output)
     if output_file.is_file():
-        overwrite_file = typer.confirm(
-            f"{output_file} already exists. Do you want to overwrite it?"
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
         )
         if not overwrite_file:
             err_console.print("Won't overwrite")
@@ -96,10 +107,10 @@ def impute(
         )
         df.write_csv(output_file)
 
-    print("Finished imputing...")
+    print("[green]Finished imputing[/green]...")
     if verbose:
         print(
-            f"Imputed {imp_size:_} values -> {(imp_size / df.height):0.2f} of rows (n = {df.height:_}) affected"
+            f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
         )
         print(df.head())
 
