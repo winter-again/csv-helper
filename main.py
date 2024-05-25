@@ -39,6 +39,37 @@ def preview(
 
 
 @app.command()
+def check(
+    input: Annotated[str, typer.Argument(help="The CSV file to check")],
+    fill_col: Annotated[
+        str, typer.Option("--fill-col", "-c", help="Name of the column to check")
+    ],
+    fill_flag: Annotated[
+        str,
+        typer.Option("--fill-flag", "-f", help="Flag (string) to look for in FILL_COL"),
+    ],
+) -> None:
+    """
+    Check the column FILL_COL in INPUT for occurrences of FILL_FLAG.
+    """
+    input_file = Path(input)
+    if not input_file.is_file():
+        err_console.print(f"File {input_file} does not exist")
+        raise typer.Abort()
+
+    df = pl.read_csv(input_file, infer_schema_length=0)
+    if fill_col not in df.columns:
+        err_console.print(f"Column {fill_col} cannot be found in {input_file}")
+        raise typer.Abort()
+
+    imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
+    print(
+        f"Found [blue]{imp_size:_}[/blue] occurrences of '{fill_flag}' in '{fill_col}' -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_})"
+    )
+    print(df.filter(pl.col(fill_col) == fill_flag).head())
+
+
+@app.command()
 def impute(
     input: Annotated[str, typer.Argument(help="The CSV file to impute")],
     output: Annotated[str, typer.Argument(help="Path to save the output CSV")],
@@ -47,7 +78,7 @@ def impute(
     ],
     fill_flag: Annotated[
         str,
-        typer.Option("--fill-flag", "-f", help="String flag to look for in FILL_COL"),
+        typer.Option("--fill-flag", "-f", help="Flag (string) to look for in FILL_COL"),
     ],
     fill_range: Annotated[
         str,
@@ -79,17 +110,13 @@ def impute(
         err_console.print(f"File {input_file} does not exist")
         raise typer.Abort()
 
-    # TODO: some try/catch handling in case problems reading the file?
     df = pl.read_csv(input_file, infer_schema_length=0)
-    # TODO: consider validation for whether the col is an int col?
+
     if fill_col not in df.columns:
         err_console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
-    # TODO: should validate that both are positive ints and
-    # lower bound < upper bound?
-    # what if lower bound == upper bound?
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
         # isdigit() returns False for negative ints
         err_console.print(
@@ -106,19 +133,20 @@ def impute(
             raise typer.Abort()
     fill_range_int = (fill_range_lb, fill_range_ub)
 
-    # TODO: consider ordering of this check
     output_file = Path(output)
     if output_file.is_file():
         overwrite_file = Confirm.ask(
             f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
         )
         if not overwrite_file:
-            # treat as error?
             print("Won't overwrite")
             raise typer.Abort()
 
-    rng = np.random.default_rng(seed)
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
+    if imp_size == 0:
+        print(f"Cannot find any instances of {fill_flag} in {fill_col}")
+        raise typer.Abort()
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -126,6 +154,7 @@ def impute(
     ) as progress:
         progress.add_task(description="Imputing...", total=None)
 
+        rng = np.random.default_rng(seed)
         t0 = time.time()
         df = df.with_columns(
             pl.when(pl.col(fill_col) == fill_flag)
