@@ -1,0 +1,23 @@
+[project]
+name = "csv-helper"
+version = "0.1.0"
+description = "A simple CLI for working with CSV data"
+authors = [
+    {name = "Andrew Tiu", email = "andrew.tiu88@gmail.com"},
+]
+dependencies = [
+    "typer>=0.12.3",
+    "polars>=0.20.30",
+    "numpy>=1.26.4",
+]
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
