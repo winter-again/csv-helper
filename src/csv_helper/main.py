@@ -356,18 +356,17 @@ def impute_pair(
         print(df.filter(pl.col(fill_cols_parsed.denominator) <= 5).head())
 
 
-def fill_parallel(denominator, fill_range: FillRange, seed: int) -> int:
+def fill_parallel(denominator, fill_range_int: FillRange, seed: int) -> int:
     """
     Return a random integer from a range that is capped
     at the 'denominator' value
     """
     rng = np.random.default_rng(seed)
     # TODO: what's the type of denominator?
-    if denominator <= fill_range.ub:
-        # TODO: just assumes fill_range[0] safely cast to int
-        val = rng.integers(fill_range.lb, denominator + 1)
+    if denominator <= fill_range_int.ub:
+        val = rng.integers(fill_range_int.lb, denominator + 1)
     else:
-        val = rng.integers(fill_range.lb, fill_range.ub)
+        val = rng.integers(fill_range_int.lb, fill_range_int.ub + 1)
     return val
 
 
