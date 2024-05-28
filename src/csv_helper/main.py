@@ -124,8 +124,9 @@ def impute(
         )
         raise typer.Abort()
     else:
-        fill_range_lb = int(fill_range_parsed[0])
-        fill_range_ub = int(fill_range_parsed[1])
+        fill_range_lb, fill_range_ub = tuple(int(x) for x in fill_range_parsed)
+        # fill_range_lb = int(fill_range_parsed[0])
+        # fill_range_ub = int(fill_range_parsed[1])
         if fill_range_lb > fill_range_ub:
             err_console.print(
                 f"Lower bound of --fill-range is larger than upper bound: [{fill_range_lb}, {fill_range_ub}]"
@@ -155,7 +156,7 @@ def impute(
         progress.add_task(description="Imputing...", total=None)
 
         rng = np.random.default_rng(seed)
-        t0 = time.time()
+        t0 = time.perf_counter()
         df = df.with_columns(
             pl.when(pl.col(fill_col) == fill_flag)
             .then(
@@ -170,7 +171,7 @@ def impute(
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
         )
-        t1 = time.time()
+        t1 = time.perf_counter()
         df.write_csv(output_file)
 
     print("[green]Finished imputing[/green]...")
@@ -179,8 +180,57 @@ def impute(
         print(
             f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
         )
-        print(f"Took ~{(t1 - t0):0.2f} s\n")
+        print(f"Took ~{(t1 - t0):0.3f} s\n")
         print(df.head())
+
+
+@app.command("impute-pair")
+def impute_pair(
+    input: Annotated[str, typer.Argument(help="The CSV file to impute")],
+    output: Annotated[str, typer.Argument(help="Path to save the output CSV")],
+    fill_cols: Annotated[
+        str,
+        typer.Option(
+            "--fill-cols",
+            "-c",
+            help="Pair of columns (numerator and denominator) to be imputed. Specify as comma-separated values. For example, 'count_col,denom_col' specifies 'count_col' as the numerator and 'denom_col' as the denominator.",
+        ),
+    ],
+    fill_flag: Annotated[
+        str,
+        typer.Option(
+            "--fill-flag", "-f", help="Flag (string) to look for in FILL_COLS"
+        ),
+    ],
+    fill_range: Annotated[
+        str,
+        typer.Option(
+            "--fill-range",
+            "-r",
+            help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5].",
+        ),
+    ],
+    seed: Annotated[
+        int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
+    ],
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Whether to show additional imputation summary information",
+        ),
+    ] = False,
+):
+    """
+    Impute a pair of columns FILL_COLS in a CSV file INPUT. Will look for the
+    symbol FILL_FLAG in FILL_COLS and substitute with a random
+    integer in the closed range FILL_RANGE. Importantly, the pair of columns
+    are comprised of a numerator column and a denominator column such that
+    the imputed values of the numerator column must not exceed the imputed
+    values of the denominator column. Save the resulting data to OUTPUT.
+    """
+    pass
 
 
 if __name__ == "__main__":
