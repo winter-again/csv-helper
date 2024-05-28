@@ -319,12 +319,14 @@ def impute_pair(
             .cast(pl.Float64)  # TODO: is this ok; float or int?
         ).with_columns(
             pl.when(pl.col(fill_cols_parsed.numerator) == fill_flag)
-            # TODO: is this correct use of map_elements()?
+            # TODO: is this correct use of map_elements()? I believe this is now running Python
+            # so will be slow
             .then(
-                pl.struct([fill_cols_parsed.denominator]).map_elements(
+                # pl.struct([fill_cols_parsed.denominator]).map_elements(
+                pl.col(fill_cols_parsed.denominator).map_elements(
                     lambda x: fill_parallel(
-                        # x.struct.field(fill_cols_parsed.denominator),
-                        x[fill_cols_parsed.denominator],
+                        # x[fill_cols_parsed.denominator],
+                        x,
                         fill_range_int,
                         seed,
                     ),
