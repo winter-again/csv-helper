@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import polars as pl
@@ -10,14 +11,19 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 from typing_extensions import Annotated
 
+
+class FillRange(NamedTuple):
+    lb: int
+    ub: int
+
+
+class FillCols(NamedTuple):
+    numerator: str
+    denominator: str
+
+
 app = typer.Typer()
 err_console = Console(stderr=True)
-
-
-# TODO:
-# abort vs. typer.Exit(code=1); I'm guessing latter is useful when the CLI
-# is composed alongside other commands
-# impute-pair should be a separate command b/c it has more delicate logic
 
 
 @app.command()
@@ -52,6 +58,7 @@ def check(
     """
     Check the column FILL_COL in INPUT for occurrences of FILL_FLAG.
     """
+    # TODO: better control over what columns are shown; want to make sure the requested col is showing
     input_file = Path(input)
     if not input_file.is_file():
         err_console.print(f"File {input_file} does not exist")
@@ -116,6 +123,7 @@ def impute(
         err_console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
+    # TODO: any inefficiencies or unnecessary steps here?
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
         # isdigit() returns False for negative ints
@@ -124,15 +132,13 @@ def impute(
         )
         raise typer.Abort()
     else:
-        fill_range_lb, fill_range_ub = tuple(int(x) for x in fill_range_parsed)
-        # fill_range_lb = int(fill_range_parsed[0])
-        # fill_range_ub = int(fill_range_parsed[1])
-        if fill_range_lb > fill_range_ub:
+        # fill_range_int = tuple(int(x) for x in fill_range_parsed)
+        fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
+        if fill_range_int.lb > fill_range_int.ub:
             err_console.print(
-                f"Lower bound of --fill-range is larger than upper bound: [{fill_range_lb}, {fill_range_ub}]"
+                f"Lower bound of --fill-range is larger than upper bound: [{fill_range_int.lb}, {fill_range_int.ub}]"
             )
             raise typer.Abort()
-    fill_range_int = (fill_range_lb, fill_range_ub)
 
     output_file = Path(output)
     if output_file.is_file():
@@ -157,6 +163,7 @@ def impute(
 
         rng = np.random.default_rng(seed)
         t0 = time.perf_counter()
+        # TODO: can I actually do this without having to compute random integers for every row?
         df = df.with_columns(
             pl.when(pl.col(fill_col) == fill_flag)
             .then(
@@ -164,12 +171,13 @@ def impute(
                     # must specify size to be height of df despite not filling every row
                     # thus, we get "new" rand int per row
                     rng.integers(
-                        fill_range_int[0], fill_range_int[1] + 1, size=df.height
+                        fill_range_int.lb, fill_range_int.ub + 1, size=df.height
                     )
-                ).cast(pl.String)
+                )
             )
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
+            .cast(pl.Int64)  # TODO: is this fine to do here?
         )
         t1 = time.perf_counter()
         df.write_csv(output_file)
@@ -230,7 +238,135 @@ def impute_pair(
     the imputed values of the numerator column must not exceed the imputed
     values of the denominator column. Save the resulting data to OUTPUT.
     """
-    pass
+    input_file = Path(input)
+    if not input_file.is_file():
+        err_console.print(f"File {input_file} does not exist")
+        raise typer.Abort()
+
+    df = pl.read_csv(input_file, infer_schema_length=0)
+
+    fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
+    fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
+    if fill_cols_parsed.numerator not in df.columns:
+        err_console.print(
+            f"{fill_cols_parsed.numerator} cannot be found in {input_file}"
+        )
+        raise typer.Abort()
+
+    if fill_cols_parsed.denominator not in df.columns:
+        err_console.print(
+            f"{fill_cols_parsed.denominator} cannot be found in {input_file}"
+        )
+        raise typer.Abort()
+
+    fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
+    if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
+        # isdigit() returns False for negative ints
+        err_console.print(
+            f"Invalid range given for --fill-range: [{fill_range_parsed[0]}, {fill_range_parsed[1]}]"
+        )
+        raise typer.Abort()
+    else:
+        # fill_range_int = tuple(int(x) for x in fill_range_parsed)
+        fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
+        if fill_range_int.lb > fill_range_int.ub:
+            err_console.print(
+                f"Lower bound of --fill-range is larger than upper bound: [{fill_range_int.lb}, {fill_range_int.ub}]"
+            )
+            raise typer.Abort()
+
+    output_file = Path(output)
+    if output_file.is_file():
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
+        )
+        if not overwrite_file:
+            print("Won't overwrite")
+            raise typer.Abort()
+
+    imp_sizes = (
+        len(df.filter(pl.col(fill_cols_parsed.numerator) == fill_flag)),
+        len(df.filter(pl.col(fill_cols_parsed.denominator) == fill_flag)),
+    )
+    if imp_sizes[0] == 0 and imp_sizes[1] == 0:
+        print(
+            f"Cannot find any instances of {fill_flag} in either {fill_cols_parsed.numerator} or {fill_cols_parsed.denominator}"
+        )
+        raise typer.Abort()
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        progress.add_task(description="Imputing...", total=None)
+
+        rng = np.random.default_rng(seed)
+        t0 = time.perf_counter()
+        df = df.with_columns(
+            # TODO: can this be consolidated into single call to map_batches()?
+            # impute denominator col first
+            pl.when(pl.col(fill_cols_parsed.denominator) == fill_flag)
+            .then(
+                pl.lit(
+                    rng.integers(
+                        fill_range_int.lb, fill_range_int.ub + 1, size=df.height
+                    )
+                )
+            )
+            .otherwise(pl.col(fill_cols_parsed.denominator))
+            .alias(fill_cols_parsed.denominator)
+            .cast(pl.Float64)  # TODO: is this ok; float or int?
+        ).with_columns(
+            pl.when(pl.col(fill_cols_parsed.numerator) == fill_flag)
+            # TODO: is this correct use of map_elements()?
+            .then(
+                pl.struct([fill_cols_parsed.denominator]).map_elements(
+                    lambda x: fill_parallel(
+                        # x.struct.field(fill_cols_parsed.denominator),
+                        x[fill_cols_parsed.denominator],
+                        fill_range_int,
+                        seed,
+                    ),
+                    return_dtype=pl.Int64,
+                )
+            )
+            .otherwise(pl.col(fill_cols_parsed.numerator))
+            .alias(fill_cols_parsed[0])
+            .cast(pl.Float64)  # TODO: is this ok; float or int?
+        )
+        t1 = time.perf_counter()
+        df.write_csv(output_file)
+
+    print("[green]Finished imputing[/green]...")
+
+    # TODO: consider rich table here
+    # TODO: if prop imputed really small or 0, should prob have a diff message
+    if verbose:
+        print(
+            f"Imputed [blue]{imp_sizes[0]:_}[/blue] values in {fill_cols_parsed.numerator} -> [blue]{(imp_sizes[0] / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
+        )
+        print(
+            f"Imputed [blue]{imp_sizes[1]:_}[/blue] values in {fill_cols_parsed.denominator} -> [blue]{(imp_sizes[1] / df.height):0.4f}[/blue] of rows (n = {df.height:_}) affected"
+        )
+        print(f"Took ~{(t1 - t0):0.3f} s\n")
+
+        print(df.filter(pl.col(fill_cols_parsed.denominator) <= 5).head())
+
+
+def fill_parallel(denominator, fill_range: FillRange, seed: int) -> int:
+    """
+    Return a random integer from a range that is capped
+    at the 'denominator' value
+    """
+    rng = np.random.default_rng(seed)
+    # TODO: what's the type of denominator?
+    if denominator <= fill_range.ub:
+        # TODO: just assumes fill_range[0] safely cast to int
+        val = rng.integers(fill_range.lb, denominator + 1)
+    else:
+        val = rng.integers(fill_range.lb, fill_range.ub)
+    return val
 
 
 if __name__ == "__main__":
