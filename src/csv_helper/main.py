@@ -111,7 +111,6 @@ def check(
     print(
         f"Found [blue]{imp_size:_}[/blue] occurrences of '{fill_flag}' in '{fill_col}' -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_})"
     )
-    # TODO: better control over what columns are shown? want to make sure the requested col is showing
     print(df.filter(pl.col(fill_col) == fill_flag).head())
 
 
@@ -120,11 +119,7 @@ def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -
     Return a random integer from a range that is capped
     at the 'denominator' value
     """
-    # TODO: confirm we don't need the if else blocks anymore
-    # if denominator <= fill_range_int.ub:
     val = rng.integers(fill_range_int.lb, denominator + 1)
-    # else:
-    #     val = rng.integers(fill_range_int.lb, fill_range_int.ub + 1)
     return val
 
 
@@ -248,8 +243,7 @@ def impute(
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
         print(table)
 
-        # TODO: better control over what columns are shown; want to make sure the requested col is showing
-        print(df.head())
+        print(df.filter(pl.col(fill_col) <= fill_range_int.ub).head())
 
 
 @app.command("impute-pair")
@@ -368,14 +362,14 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.denominator))
             .alias(fill_cols_parsed.denominator)
-            .cast(pl.Float64)  # TODO: is this ok; float or int?
+            .cast(pl.Float64)
+            .cast(pl.Int64)  # TODO: is this ok; float or int?
         ).with_columns(
             pl.when(
                 (pl.col(fill_cols_parsed.numerator) == fill_flag)
                 & (pl.col(fill_cols_parsed.denominator) <= fill_range_int.ub)
             )
-            # TODO: is this correct use of map_elements()? I believe this is now running Python
-            # so will be slow
+            # map_elements() will run Python so it's slow
             .then(
                 pl.col(fill_cols_parsed.denominator).map_elements(
                     lambda x: fill_parallel(
@@ -399,7 +393,10 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.numerator))
             .alias(fill_cols_parsed[0])
-            .cast(pl.Float64)  # TODO: is this ok; float or int?
+            .cast(
+                pl.Float64
+            )  # TODO: fails cast from str to int; could cast str -> float -> int?
+            .cast(pl.Int64)  # TODO: float or int?
         )
         t1 = time.perf_counter()
         df.write_csv(output)
@@ -430,11 +427,11 @@ def impute_pair(
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
         err_console.print(table)
 
-        # TODO: better control over what columns are shown; want to make sure the requested col is showing
         print(
-            df.filter(pl.col(fill_cols_parsed.denominator) <= 5)
-            .select(fill_cols_parsed.numerator, fill_cols_parsed.denominator)
-            .head()
+            df.filter(
+                (pl.col(fill_cols_parsed.numerator) <= fill_range_int.ub)
+                | (pl.col(fill_cols_parsed.denominator) <= fill_range_int.ub)
+            ).head()
         )
 
 
