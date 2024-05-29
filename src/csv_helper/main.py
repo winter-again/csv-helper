@@ -1,6 +1,6 @@
 import time
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 import numpy as np
 import polars as pl
@@ -25,30 +25,72 @@ class FillCols(NamedTuple):
 
 
 app = typer.Typer()
-console = Console(stderr=True)
+err_console = Console(stderr=True)
+
+
+def fill_cols_exist(df: pl.DataFrame, fill_cols: list[str]) -> bool:
+    for col in fill_cols:
+        if col not in df.columns:
+            return False
+    return True
+
+
+def parse_validate_fill_range(fill_range: str) -> Optional[FillRange]:
+    fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
+    if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
+        return None
+    else:
+        fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
+        if fill_range_int.lb > fill_range_int.ub:
+            return None
+        else:
+            return fill_range_int
+
+
+def fill_flag_exists(df: pl.DataFrame, fill_col: str, fill_flag: str) -> bool:
+    imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
+    if imp_size == 0:
+        return False
+    else:
+        return True
 
 
 @app.command()
 def preview(
-    input: Annotated[str, typer.Argument()],
-    n_rows: Annotated[int, typer.Option("--num-rows", "-n")] = 10,
+    input: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="The CSV file to preview",
+        ),
+    ],
+    n_rows: Annotated[
+        int, typer.Option("--num-rows", "-n", min=1, help="Number of rows to preview")
+    ] = 10,
 ) -> None:
     """
     Preview a given CSV file.
     """
-    input_file = Path(input)
-    if not input_file.is_file():
-        console.print(f"File {input_file} does not exist")
-        raise typer.Abort()
-
-    print(f"File: {input_file}")
-    df = pl.read_csv(input_file, infer_schema_length=0)
+    print(f"File: {input}")
+    df = pl.read_csv(input, infer_schema_length=0)
     print(df.head(n_rows))
 
 
 @app.command()
 def check(
-    input: Annotated[str, typer.Argument(help="The CSV file to check")],
+    input: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="The CSV file to check",
+        ),
+    ],
     fill_col: Annotated[
         str, typer.Option("--fill-col", "-c", help="Name of the column to check")
     ],
@@ -60,28 +102,55 @@ def check(
     """
     Check the column FILL_COL in INPUT for occurrences of FILL_FLAG.
     """
-    # TODO: better control over what columns are shown; want to make sure the requested col is showing
-    input_file = Path(input)
-    if not input_file.is_file():
-        console.print(f"File {input_file} does not exist")
-        raise typer.Abort()
-
-    df = pl.read_csv(input_file, infer_schema_length=0)
-    if fill_col not in df.columns:
-        console.print(f"Column {fill_col} cannot be found in {input_file}")
+    df = pl.read_csv(input, infer_schema_length=0)
+    if not fill_cols_exist(df, fill_col, input):
+        err_console.print(f"Column {fill_col} cannot be found in {input}")
         raise typer.Abort()
 
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
     print(
         f"Found [blue]{imp_size:_}[/blue] occurrences of '{fill_flag}' in '{fill_col}' -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_})"
     )
+    # TODO: better control over what columns are shown? want to make sure the requested col is showing
     print(df.filter(pl.col(fill_col) == fill_flag).head())
+
+
+def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -> int:
+    """
+    Return a random integer from a range that is capped
+    at the 'denominator' value
+    """
+    # TODO: confirm we don't need the if else blocks anymore
+    # if denominator <= fill_range_int.ub:
+    val = rng.integers(fill_range_int.lb, denominator + 1)
+    # else:
+    #     val = rng.integers(fill_range_int.lb, fill_range_int.ub + 1)
+    return val
 
 
 @app.command()
 def impute(
-    input: Annotated[str, typer.Argument(help="The CSV file to impute")],
-    output: Annotated[str, typer.Argument(help="Path to save the output CSV")],
+    input: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="The CSV file to impute",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Argument(
+            exists=False,
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+            readable=False,
+            help="Path to save the output CSV",
+        ),
+    ],
     fill_col: Annotated[
         str, typer.Option("--fill-col", "-c", help="Name of the column to impute")
     ],
@@ -114,44 +183,27 @@ def impute(
     symbol FILL_FLAG in FILL_COL and substitute with a random
     integer in the closed range FILL_RANGE. Save the resulting data to OUTPUT.
     """
-    input_file = Path(input)
-    if not input_file.is_file():
-        console.print(f"File {input_file} does not exist")
+    df = pl.read_csv(input, infer_schema_length=0)
+
+    if not fill_cols_exist(df, [fill_col]):
+        err_console.print(f"Column {fill_col} cannot be found in {input}")
         raise typer.Abort()
 
-    df = pl.read_csv(input_file, infer_schema_length=0)
-
-    if fill_col not in df.columns:
-        console.print(f"Column {fill_col} cannot be found in {input_file}")
+    fill_range_int = parse_validate_fill_range(fill_range)
+    if fill_range_int is None:
+        err_console.print(f"Invalid range given for --fill-range: {fill_range}")
         raise typer.Abort()
-
-    fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
-    if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
-        # isdigit() returns False for negative ints
-        console.print(
-            f"Invalid range given for --fill-range: [{fill_range_parsed[0]}, {fill_range_parsed[1]}]"
-        )
-        raise typer.Abort()
-    else:
-        fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
-        if fill_range_int.lb > fill_range_int.ub:
-            console.print(
-                f"Lower bound of --fill-range is larger than upper bound: [{fill_range_int.lb}, {fill_range_int.ub}]"
-            )
-            raise typer.Abort()
-
-    output_file = Path(output)
-    if output_file.is_file():
-        overwrite_file = Confirm.ask(
-            f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
-        )
-        if not overwrite_file:
-            print("Won't overwrite")
-            raise typer.Abort()
 
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
-    if imp_size == 0:
-        print(f"Cannot find any instances of {fill_flag} in {fill_col}")
+    if not fill_flag_exists(df, fill_col, fill_flag):
+        err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
+        raise typer.Abort()
+
+    overwrite_file = Confirm.ask(
+        f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+    )
+    if not overwrite_file:
+        print("Won't overwrite")
         raise typer.Abort()
 
     with Progress(
@@ -180,7 +232,7 @@ def impute(
             .cast(pl.Int64)  # TODO: float or int
         )
         t1 = time.perf_counter()
-        df.write_csv(output_file)
+        df.write_csv(output)
 
     print("[green]Finished imputing[/green]...")
 
@@ -194,21 +246,35 @@ def impute(
         )
         table.add_row("[blue]Seed[/blue]", f"{seed}")
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
-        console.print(table)
+        print(table)
 
-        # print(
-        #     f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
-        # )
-        # print(f"Seed: {seed}")
-        # print(f"Took ~{(t1 - t0):0.3f} s\n")
         # TODO: better control over what columns are shown; want to make sure the requested col is showing
         print(df.head())
 
 
 @app.command("impute-pair")
 def impute_pair(
-    input: Annotated[str, typer.Argument(help="The CSV file to impute")],
-    output: Annotated[str, typer.Argument(help="Path to save the output CSV")],
+    input: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="The CSV file to impute",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Argument(
+            exists=False,
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+            readable=False,
+            help="Path to save the output CSV",
+        ),
+    ],
     fill_cols: Annotated[
         str,
         typer.Option(
@@ -251,56 +317,35 @@ def impute_pair(
     the imputed values of the numerator column must not exceed the imputed
     values of the denominator column. Save the resulting data to OUTPUT.
     """
-    input_file = Path(input)
-    if not input_file.is_file():
-        console.print(f"File {input_file} does not exist")
-        raise typer.Abort()
-
-    df = pl.read_csv(input_file, infer_schema_length=0)
+    df = pl.read_csv(input, infer_schema_length=0)
 
     fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
+    if not fill_cols_exist(df, list(fill_cols_parsed)):
+        err_console.print("Invalid columns specified for --fill-cols")
+        raise typer.Abort()
+
     fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
-    if fill_cols_parsed.numerator not in df.columns:
-        console.print(f"{fill_cols_parsed.numerator} cannot be found in {input_file}")
-        raise typer.Abort()
 
-    if fill_cols_parsed.denominator not in df.columns:
-        console.print(f"{fill_cols_parsed.denominator} cannot be found in {input_file}")
+    fill_range_int = parse_validate_fill_range(fill_range)
+    if fill_range_int is None:
+        err_console.print(f"Invalid range given for --fill-range: {fill_range}")
         raise typer.Abort()
-
-    fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
-    if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
-        # isdigit() returns False for negative ints
-        console.print(
-            f"Invalid range given for --fill-range: [{fill_range_parsed[0]}, {fill_range_parsed[1]}]"
-        )
-        raise typer.Abort()
-    else:
-        # fill_range_int = tuple(int(x) for x in fill_range_parsed)
-        fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
-        if fill_range_int.lb > fill_range_int.ub:
-            console.print(
-                f"Lower bound of --fill-range is larger than upper bound: [{fill_range_int.lb}, {fill_range_int.ub}]"
-            )
-            raise typer.Abort()
-
-    output_file = Path(output)
-    if output_file.is_file():
-        overwrite_file = Confirm.ask(
-            f"[blue bold]{output_file}[/blue bold] already exists. Do you want to overwrite it?"
-        )
-        if not overwrite_file:
-            print("Won't overwrite")
-            raise typer.Abort()
 
     imp_sizes = (
         len(df.filter(pl.col(fill_cols_parsed.numerator) == fill_flag)),
         len(df.filter(pl.col(fill_cols_parsed.denominator) == fill_flag)),
     )
     if imp_sizes[0] == 0 and imp_sizes[1] == 0:
-        print(
+        err_console.print(
             f"Cannot find any instances of {fill_flag} in either {fill_cols_parsed.numerator} or {fill_cols_parsed.denominator}"
         )
+        raise typer.Abort()
+
+    overwrite_file = Confirm.ask(
+        f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+    )
+    if not overwrite_file:
+        print("Won't overwrite")
         raise typer.Abort()
 
     with Progress(
@@ -357,13 +402,10 @@ def impute_pair(
             .cast(pl.Float64)  # TODO: is this ok; float or int?
         )
         t1 = time.perf_counter()
-        df.write_csv(output_file)
+        df.write_csv(output)
 
     print("[green]Finished imputing[/green]...")
 
-    # TODO: consider rich table here
-    # TODO: if prop imputed really small or 0, should prob have a diff message
-    # TODO: this "0.4f" is arbitrary
     if verbose:
         table = Table(title="Imputation statistics", show_header=False)
         table.add_row(
@@ -386,35 +428,14 @@ def impute_pair(
         )
         table.add_row("[blue]Seed[/blue]", f"{seed}")
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
-        console.print(table)
+        err_console.print(table)
 
-        # print(
-        #     f"Imputed [blue]{imp_sizes[0]:_}[/blue] values in {fill_cols_parsed.numerator} -> [blue]{(imp_sizes[0] / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
-        # )
-        # print(
-        #     f"Imputed [blue]{imp_sizes[1]:_}[/blue] values in {fill_cols_parsed.denominator} -> [blue]{(imp_sizes[1] / df.height):0.4f}[/blue] of rows (n = {df.height:_}) affected"
-        # )
-        # print(f"Seed: {seed}")
-        # print(f"Took ~{(t1 - t0):0.3f} s\n")
-
+        # TODO: better control over what columns are shown; want to make sure the requested col is showing
         print(
             df.filter(pl.col(fill_cols_parsed.denominator) <= 5)
             .select(fill_cols_parsed.numerator, fill_cols_parsed.denominator)
             .head()
         )
-
-
-def fill_parallel(denominator, fill_range_int: FillRange, rng: Generator) -> int:
-    """
-    Return a random integer from a range that is capped
-    at the 'denominator' value
-    """
-    # TODO: what's the type of denominator?
-    if denominator <= fill_range_int.ub:
-        val = rng.integers(fill_range_int.lb, denominator + 1)
-    else:
-        val = rng.integers(fill_range_int.lb, fill_range_int.ub + 1)
-    return val
 
 
 if __name__ == "__main__":
