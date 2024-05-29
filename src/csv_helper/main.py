@@ -5,6 +5,7 @@ from typing import NamedTuple
 import numpy as np
 import polars as pl
 import typer
+from numpy.random import Generator
 from rich import print
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -97,7 +98,7 @@ def impute(
     ],
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
-    ],
+    ] = 123,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -123,7 +124,6 @@ def impute(
         err_console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
-    # TODO: any inefficiencies or unnecessary steps here?
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
         # isdigit() returns False for negative ints
@@ -132,7 +132,6 @@ def impute(
         )
         raise typer.Abort()
     else:
-        # fill_range_int = tuple(int(x) for x in fill_range_parsed)
         fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
         if fill_range_int.lb > fill_range_int.ub:
             err_console.print(
@@ -177,7 +176,7 @@ def impute(
             )
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
-            .cast(pl.Int64)  # TODO: is this fine to do here?
+            .cast(pl.Int64)  # TODO: float or int
         )
         t1 = time.perf_counter()
         df.write_csv(output_file)
@@ -188,6 +187,7 @@ def impute(
         print(
             f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
         )
+        print(f"Seed: {seed}")
         print(f"Took ~{(t1 - t0):0.3f} s\n")
         print(df.head())
 
@@ -220,7 +220,7 @@ def impute_pair(
     ],
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
-    ],
+    ] = 123,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -304,8 +304,6 @@ def impute_pair(
         rng = np.random.default_rng(seed)
         t0 = time.perf_counter()
         df = df.with_columns(
-            # TODO: can this be consolidated into single call to map_batches()?
-            # impute denominator col first
             pl.when(pl.col(fill_cols_parsed.denominator) == fill_flag)
             .then(
                 pl.lit(
@@ -318,7 +316,10 @@ def impute_pair(
             .alias(fill_cols_parsed.denominator)
             .cast(pl.Float64)  # TODO: is this ok; float or int?
         ).with_columns(
-            pl.when(pl.col(fill_cols_parsed.numerator) == fill_flag)
+            pl.when(
+                (pl.col(fill_cols_parsed.numerator) == fill_flag)
+                & (pl.col(fill_cols_parsed.denominator) <= fill_range_int.ub)
+            )
             # TODO: is this correct use of map_elements()? I believe this is now running Python
             # so will be slow
             .then(
@@ -328,9 +329,20 @@ def impute_pair(
                         # x[fill_cols_parsed.denominator],
                         x,
                         fill_range_int,
-                        seed,
+                        rng,
                     ),
                     return_dtype=pl.Int64,
+                )
+            )
+            .when(
+                (pl.col(fill_cols_parsed.numerator) == fill_flag)
+                & (pl.col(fill_cols_parsed.denominator) > fill_range_int.ub)
+            )
+            .then(
+                pl.lit(
+                    rng.integers(
+                        fill_range_int.lb, fill_range_int.ub + 1, size=df.height
+                    )
                 )
             )
             .otherwise(pl.col(fill_cols_parsed.numerator))
@@ -344,6 +356,7 @@ def impute_pair(
 
     # TODO: consider rich table here
     # TODO: if prop imputed really small or 0, should prob have a diff message
+    # TODO: this "0.4f" is arbitrary
     if verbose:
         print(
             f"Imputed [blue]{imp_sizes[0]:_}[/blue] values in {fill_cols_parsed.numerator} -> [blue]{(imp_sizes[0] / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
@@ -351,17 +364,21 @@ def impute_pair(
         print(
             f"Imputed [blue]{imp_sizes[1]:_}[/blue] values in {fill_cols_parsed.denominator} -> [blue]{(imp_sizes[1] / df.height):0.4f}[/blue] of rows (n = {df.height:_}) affected"
         )
+        print(f"Seed: {seed}")
         print(f"Took ~{(t1 - t0):0.3f} s\n")
 
-        print(df.filter(pl.col(fill_cols_parsed.denominator) <= 5).head())
+        print(
+            df.filter(pl.col(fill_cols_parsed.denominator) <= 5)
+            .select(fill_cols_parsed.numerator, fill_cols_parsed.denominator)
+            .head()
+        )
 
 
-def fill_parallel(denominator, fill_range_int: FillRange, seed: int) -> int:
+def fill_parallel(denominator, fill_range_int: FillRange, rng: Generator) -> int:
     """
     Return a random integer from a range that is capped
     at the 'denominator' value
     """
-    rng = np.random.default_rng(seed)
     # TODO: what's the type of denominator?
     if denominator <= fill_range_int.ub:
         val = rng.integers(fill_range_int.lb, denominator + 1)
