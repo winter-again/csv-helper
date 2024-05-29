@@ -103,7 +103,7 @@ def check(
     Check the column FILL_COL in INPUT for occurrences of FILL_FLAG.
     """
     df = pl.read_csv(input, infer_schema_length=0)
-    if not fill_cols_exist(df, fill_col, input):
+    if not fill_cols_exist(df, [fill_col]):
         err_console.print(f"Column {fill_col} cannot be found in {input}")
         raise typer.Abort()
 
