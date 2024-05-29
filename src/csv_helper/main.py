@@ -10,6 +10,7 @@ from rich import print
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
+from rich.table import Table
 from typing_extensions import Annotated
 
 
@@ -24,7 +25,7 @@ class FillCols(NamedTuple):
 
 
 app = typer.Typer()
-err_console = Console(stderr=True)
+console = Console(stderr=True)
 
 
 @app.command()
@@ -37,7 +38,7 @@ def preview(
     """
     input_file = Path(input)
     if not input_file.is_file():
-        err_console.print(f"File {input_file} does not exist")
+        console.print(f"File {input_file} does not exist")
         raise typer.Abort()
 
     print(f"File: {input_file}")
@@ -62,12 +63,12 @@ def check(
     # TODO: better control over what columns are shown; want to make sure the requested col is showing
     input_file = Path(input)
     if not input_file.is_file():
-        err_console.print(f"File {input_file} does not exist")
+        console.print(f"File {input_file} does not exist")
         raise typer.Abort()
 
     df = pl.read_csv(input_file, infer_schema_length=0)
     if fill_col not in df.columns:
-        err_console.print(f"Column {fill_col} cannot be found in {input_file}")
+        console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
@@ -115,26 +116,26 @@ def impute(
     """
     input_file = Path(input)
     if not input_file.is_file():
-        err_console.print(f"File {input_file} does not exist")
+        console.print(f"File {input_file} does not exist")
         raise typer.Abort()
 
     df = pl.read_csv(input_file, infer_schema_length=0)
 
     if fill_col not in df.columns:
-        err_console.print(f"Column {fill_col} cannot be found in {input_file}")
+        console.print(f"Column {fill_col} cannot be found in {input_file}")
         raise typer.Abort()
 
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
         # isdigit() returns False for negative ints
-        err_console.print(
+        console.print(
             f"Invalid range given for --fill-range: [{fill_range_parsed[0]}, {fill_range_parsed[1]}]"
         )
         raise typer.Abort()
     else:
         fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
         if fill_range_int.lb > fill_range_int.ub:
-            err_console.print(
+            console.print(
                 f"Lower bound of --fill-range is larger than upper bound: [{fill_range_int.lb}, {fill_range_int.ub}]"
             )
             raise typer.Abort()
@@ -184,11 +185,23 @@ def impute(
     print("[green]Finished imputing[/green]...")
 
     if verbose:
-        print(
-            f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
+        table = Table(title="Imputation statistics", show_header=False)
+        table.add_row("[blue]Count of imputed values[/blue]", f"{imp_size:_}")
+        table.add_row(
+            "[blue]Proportion of imputed values[/blue]",
+            f"{(imp_size / df.height):0.2f} (n = {df.height:_})",
+            end_section=True,
         )
-        print(f"Seed: {seed}")
-        print(f"Took ~{(t1 - t0):0.3f} s\n")
+        table.add_row("[blue]Seed[/blue]", f"{seed}")
+        table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
+        console.print(table)
+
+        # print(
+        #     f"Imputed [blue]{imp_size:_}[/blue] values -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
+        # )
+        # print(f"Seed: {seed}")
+        # print(f"Took ~{(t1 - t0):0.3f} s\n")
+        # TODO: better control over what columns are shown; want to make sure the requested col is showing
         print(df.head())
 
 
@@ -240,7 +253,7 @@ def impute_pair(
     """
     input_file = Path(input)
     if not input_file.is_file():
-        err_console.print(f"File {input_file} does not exist")
+        console.print(f"File {input_file} does not exist")
         raise typer.Abort()
 
     df = pl.read_csv(input_file, infer_schema_length=0)
@@ -248,21 +261,17 @@ def impute_pair(
     fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
     fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
     if fill_cols_parsed.numerator not in df.columns:
-        err_console.print(
-            f"{fill_cols_parsed.numerator} cannot be found in {input_file}"
-        )
+        console.print(f"{fill_cols_parsed.numerator} cannot be found in {input_file}")
         raise typer.Abort()
 
     if fill_cols_parsed.denominator not in df.columns:
-        err_console.print(
-            f"{fill_cols_parsed.denominator} cannot be found in {input_file}"
-        )
+        console.print(f"{fill_cols_parsed.denominator} cannot be found in {input_file}")
         raise typer.Abort()
 
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
         # isdigit() returns False for negative ints
-        err_console.print(
+        console.print(
             f"Invalid range given for --fill-range: [{fill_range_parsed[0]}, {fill_range_parsed[1]}]"
         )
         raise typer.Abort()
@@ -270,7 +279,7 @@ def impute_pair(
         # fill_range_int = tuple(int(x) for x in fill_range_parsed)
         fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
         if fill_range_int.lb > fill_range_int.ub:
-            err_console.print(
+            console.print(
                 f"Lower bound of --fill-range is larger than upper bound: [{fill_range_int.lb}, {fill_range_int.ub}]"
             )
             raise typer.Abort()
@@ -323,10 +332,8 @@ def impute_pair(
             # TODO: is this correct use of map_elements()? I believe this is now running Python
             # so will be slow
             .then(
-                # pl.struct([fill_cols_parsed.denominator]).map_elements(
                 pl.col(fill_cols_parsed.denominator).map_elements(
                     lambda x: fill_parallel(
-                        # x[fill_cols_parsed.denominator],
                         x,
                         fill_range_int,
                         rng,
@@ -358,14 +365,37 @@ def impute_pair(
     # TODO: if prop imputed really small or 0, should prob have a diff message
     # TODO: this "0.4f" is arbitrary
     if verbose:
-        print(
-            f"Imputed [blue]{imp_sizes[0]:_}[/blue] values in {fill_cols_parsed.numerator} -> [blue]{(imp_sizes[0] / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
+        table = Table(title="Imputation statistics", show_header=False)
+        table.add_row(
+            f"[blue]Count of imputed values in[/blue] '{fill_cols_parsed.numerator}'",
+            f"{imp_sizes[0]:_}",
         )
-        print(
-            f"Imputed [blue]{imp_sizes[1]:_}[/blue] values in {fill_cols_parsed.denominator} -> [blue]{(imp_sizes[1] / df.height):0.4f}[/blue] of rows (n = {df.height:_}) affected"
+        table.add_row(
+            f"[blue]Proportion of imputed values in[/blue] '{fill_cols_parsed.numerator}",
+            f"{(imp_sizes[0] / df.height):0.2f} (n = {df.height:_})",
+            end_section=True,
         )
-        print(f"Seed: {seed}")
-        print(f"Took ~{(t1 - t0):0.3f} s\n")
+        table.add_row(
+            f"[blue]Count of imputed values in[/blue] '{fill_cols_parsed.denominator}'",
+            f"{imp_sizes[1]:_}",
+        )
+        table.add_row(
+            f"[blue]Proportion of imputed values in[/blue] '{fill_cols_parsed.denominator}'",
+            f"{(imp_sizes[1] / df.height):0.2f} (n = {df.height:_})",
+            end_section=True,
+        )
+        table.add_row("[blue]Seed[/blue]", f"{seed}")
+        table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
+        console.print(table)
+
+        # print(
+        #     f"Imputed [blue]{imp_sizes[0]:_}[/blue] values in {fill_cols_parsed.numerator} -> [blue]{(imp_sizes[0] / df.height):0.2f}[/blue] of rows (n = {df.height:_}) affected"
+        # )
+        # print(
+        #     f"Imputed [blue]{imp_sizes[1]:_}[/blue] values in {fill_cols_parsed.denominator} -> [blue]{(imp_sizes[1] / df.height):0.4f}[/blue] of rows (n = {df.height:_}) affected"
+        # )
+        # print(f"Seed: {seed}")
+        # print(f"Took ~{(t1 - t0):0.3f} s\n")
 
         print(
             df.filter(pl.col(fill_cols_parsed.denominator) <= 5)
