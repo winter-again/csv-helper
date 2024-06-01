@@ -194,12 +194,13 @@ def impute(
         err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
         raise typer.Abort()
 
-    overwrite_file = Confirm.ask(
-        f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
-    )
-    if not overwrite_file:
-        print("Won't overwrite")
-        raise typer.Abort()
+    if output.is_file():
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+        )
+        if not overwrite_file:
+            print("Won't overwrite")
+            raise typer.Abort()
 
     with Progress(
         SpinnerColumn(),
@@ -335,12 +336,13 @@ def impute_pair(
         )
         raise typer.Abort()
 
-    overwrite_file = Confirm.ask(
-        f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
-    )
-    if not overwrite_file:
-        print("Won't overwrite")
-        raise typer.Abort()
+    if output.is_file():
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+        )
+        if not overwrite_file:
+            print("Won't overwrite")
+            raise typer.Abort()
 
     with Progress(
         SpinnerColumn(),
