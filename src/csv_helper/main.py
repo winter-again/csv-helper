@@ -194,6 +194,16 @@ def impute(
         err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
         raise typer.Abort()
 
+    if not output.parent.is_dir():
+        create_dir = Confirm.ask(
+            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any parents?"
+        )
+        if create_dir:
+            output.parent.mkdir(parents=True)
+        else:
+            print("Won't create directories")
+            raise typer.Abort()
+
     if output.is_file():
         overwrite_file = Confirm.ask(
             f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
