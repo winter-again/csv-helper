@@ -68,7 +68,7 @@ def preview(
         ),
     ],
     n_rows: Annotated[
-        int, typer.Option("--num-rows", "-n", min=1, help="Number of rows to preview")
+        int, typer.Option("--nrows", "-n", min=1, help="Number of rows to preview")
     ] = 10,
 ) -> None:
     """
@@ -92,15 +92,15 @@ def check(
         ),
     ],
     fill_col: Annotated[
-        str, typer.Option("--fill-col", "-c", help="Name of the column to check")
+        str, typer.Option("--col", "-c", help="Name of the column to check")
     ],
     fill_flag: Annotated[
         str,
-        typer.Option("--fill-flag", "-f", help="Flag (string) to look for in FILL_COL"),
+        typer.Option("--flag", "-f", help="Flag (string) to look for in COL"),
     ],
 ) -> None:
     """
-    Check the column FILL_COL in INPUT for occurrences of FILL_FLAG.
+    Check the column COL in INPUT for occurrences of FLAG.
     """
     df = pl.read_csv(input, infer_schema_length=0)
     if not fill_cols_exist(df, [fill_col]):
@@ -147,16 +147,16 @@ def impute(
         ),
     ],
     fill_col: Annotated[
-        str, typer.Option("--fill-col", "-c", help="Name of the column to impute")
+        str, typer.Option("--col", "-c", help="Name of the column to impute")
     ],
     fill_flag: Annotated[
         str,
-        typer.Option("--fill-flag", "-f", help="Flag (string) to look for in FILL_COL"),
+        typer.Option("--flag", "-f", help="Flag (string) to look for in COL"),
     ],
     fill_range: Annotated[
         str,
         typer.Option(
-            "--fill-range",
+            "--range",
             "-r",
             help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
         ),
@@ -174,9 +174,9 @@ def impute(
     ] = False,
 ) -> None:
     """
-    Impute the column FILL_COL in a CSV file INPUT. Will look for the
-    symbol FILL_FLAG in FILL_COL and substitute with a random
-    integer in the closed range FILL_RANGE. Save the resulting data to OUTPUT.
+    Impute the column COL in a CSV file INPUT. Will look for the
+    symbol FLAG in COL and substitute with a random
+    integer in the closed range RANGE. Save the resulting data to OUTPUT.
     """
     df = pl.read_csv(input, infer_schema_length=0)
 
@@ -186,7 +186,7 @@ def impute(
 
     fill_range_int = parse_validate_fill_range(fill_range)
     if fill_range_int is None:
-        err_console.print(f"Invalid range given for --fill-range: {fill_range}")
+        err_console.print(f"Invalid range given for --range: {fill_range}")
         raise typer.Abort()
 
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
@@ -283,21 +283,19 @@ def impute_pair(
     fill_cols: Annotated[
         str,
         typer.Option(
-            "--fill-cols",
+            "--cols",
             "-c",
             help="Pair of columns (numerator and denominator) to be imputed. Specify as comma-separated values. For example, 'count_col,denom_col' specifies 'count_col' as the numerator and 'denom_col' as the denominator.",
         ),
     ],
     fill_flag: Annotated[
         str,
-        typer.Option(
-            "--fill-flag", "-f", help="Flag (string) to look for in FILL_COLS"
-        ),
+        typer.Option("--flag", "-f", help="Flag (string) to look for in COLS"),
     ],
     fill_range: Annotated[
         str,
         typer.Option(
-            "--fill-range",
+            "--range",
             "-r",
             help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5].",
         ),
@@ -315,9 +313,9 @@ def impute_pair(
     ] = False,
 ):
     """
-    Impute a pair of columns FILL_COLS in a CSV file INPUT. Will look for the
-    symbol FILL_FLAG in FILL_COLS and substitute with a random
-    integer in the closed range FILL_RANGE. Importantly, the pair of columns
+    Impute a pair of columns COLS in a CSV file INPUT. Will look for the
+    symbol FLAG in COLS and substitute with a random
+    integer in the closed range RANGE. Importantly, the pair of columns
     are comprised of a numerator column and a denominator column such that
     the imputed values of the numerator column must not exceed the imputed
     values of the denominator column. Save the resulting data to OUTPUT.
@@ -326,14 +324,14 @@ def impute_pair(
 
     fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
     if not fill_cols_exist(df, list(fill_cols_parsed)):
-        err_console.print("Invalid columns specified for --fill-cols")
+        err_console.print("Invalid columns specified for --cols")
         raise typer.Abort()
 
     fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
 
     fill_range_int = parse_validate_fill_range(fill_range)
     if fill_range_int is None:
-        err_console.print(f"Invalid range given for --fill-range: {fill_range}")
+        err_console.print(f"Invalid range given for --range: {fill_range}")
         raise typer.Abort()
 
     imp_sizes = (
