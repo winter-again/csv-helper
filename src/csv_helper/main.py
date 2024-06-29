@@ -1,4 +1,5 @@
 import time
+from enum import Enum
 from pathlib import Path
 from typing import NamedTuple, Optional
 
@@ -22,6 +23,11 @@ class FillRange(NamedTuple):
 class FillCols(NamedTuple):
     numerator: str
     denominator: str
+
+
+class ColType(str, Enum):
+    INT64 = "int64"
+    FLOAT64 = "float64"
 
 
 app = typer.Typer()
@@ -161,6 +167,14 @@ def impute(
             help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
         ),
     ],
+    col_type: Annotated[
+        ColType,
+        typer.Option(
+            "--type",
+            "-t",
+            help="Data type of COL. Can be a Polars Int64 or Float64.",
+        ),
+    ] = ColType.INT64,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -212,6 +226,11 @@ def impute(
             print("Won't overwrite")
             raise typer.Abort()
 
+    if col_type.value == "int64":
+        cast_type = pl.Int64
+    else:
+        cast_type = pl.Float64
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -235,7 +254,7 @@ def impute(
             )
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
-            .cast(pl.Int64)  # TODO: float or int
+            .cast(cast_type)
         )
         t1 = time.perf_counter()
         df.write_csv(output)
@@ -300,6 +319,12 @@ def impute_pair(
             help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5].",
         ),
     ],
+    col_type: Annotated[
+        ColType,
+        typer.Option(
+            "--type", "-t", help="Data type of COLS. Can be a Polars Int64 or Float64."
+        ),
+    ] = ColType.INT64,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -352,6 +377,11 @@ def impute_pair(
             print("Won't overwrite")
             raise typer.Abort()
 
+    if col_type.value == "int64":
+        cast_type = pl.Int64
+    else:
+        cast_type = pl.Float64
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -372,8 +402,7 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.denominator))
             .alias(fill_cols_parsed.denominator)
-            .cast(pl.Float64)
-            .cast(pl.Int64)  # TODO: is this ok; float or int?
+            .cast(cast_type)
         ).with_columns(
             pl.when(
                 (pl.col(fill_cols_parsed.numerator) == fill_flag)
@@ -403,10 +432,7 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.numerator))
             .alias(fill_cols_parsed[0])
-            .cast(
-                pl.Float64
-            )  # TODO: fails cast from str to int; could cast str -> float -> int?
-            .cast(pl.Int64)  # TODO: float or int?
+            .cast(cast_type)
         )
         t1 = time.perf_counter()
         df.write_csv(output)
