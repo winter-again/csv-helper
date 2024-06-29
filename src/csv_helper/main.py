@@ -25,9 +25,9 @@ class FillCols(NamedTuple):
     denominator: str
 
 
-class ColType(str, Enum):
-    INT64 = "int64"
-    FLOAT64 = "float64"
+class ColType(Enum):
+    INT64 = pl.Int64
+    FLOAT64 = pl.Float64
 
 
 app = typer.Typer()
@@ -174,7 +174,7 @@ def impute(
             "-t",
             help="Data type of COL. Can be a Polars Int64 or Float64.",
         ),
-    ] = ColType.INT64,
+    ] = ColType.INT64.value,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -226,11 +226,6 @@ def impute(
             print("Won't overwrite")
             raise typer.Abort()
 
-    if col_type.value == "int64":
-        cast_type = pl.Int64
-    else:
-        cast_type = pl.Float64
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -254,7 +249,7 @@ def impute(
             )
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
-            .cast(cast_type)
+            .cast(col_type.value)
         )
         t1 = time.perf_counter()
         df.write_csv(output)
@@ -324,7 +319,7 @@ def impute_pair(
         typer.Option(
             "--type", "-t", help="Data type of COLS. Can be a Polars Int64 or Float64."
         ),
-    ] = ColType.INT64,
+    ] = ColType.INT64.value,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -377,11 +372,6 @@ def impute_pair(
             print("Won't overwrite")
             raise typer.Abort()
 
-    if col_type.value == "int64":
-        cast_type = pl.Int64
-    else:
-        cast_type = pl.Float64
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -402,7 +392,7 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.denominator))
             .alias(fill_cols_parsed.denominator)
-            .cast(cast_type)
+            .cast(col_type.value)
         ).with_columns(
             pl.when(
                 (pl.col(fill_cols_parsed.numerator) == fill_flag)
@@ -432,7 +422,7 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.numerator))
             .alias(fill_cols_parsed[0])
-            .cast(cast_type)
+            .cast(col_type.value)
         )
         t1 = time.perf_counter()
         df.write_csv(output)
