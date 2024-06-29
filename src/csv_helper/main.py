@@ -29,6 +29,13 @@ class ColType(Enum):
     INT64 = pl.Int64
     FLOAT64 = pl.Float64
 
+    def __init__(self, val):
+        self.val = val
+
+    # @property
+    # def value(self):
+    #     return self.val
+
 
 app = typer.Typer()
 err_console = Console(stderr=True)
