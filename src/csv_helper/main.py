@@ -133,6 +133,19 @@ def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -
     return val
 
 
+# TODO: get rid of this when done
+@app.command()
+def test(
+    file: Annotated[
+        Path,
+        typer.Argument(
+            exists=False, file_okay=False, dir_okay=False, writable=True, readable=False
+        ),
+    ],
+) -> None:
+    print(f"File: {file}")
+
+
 @app.command()
 def impute(
     input: Annotated[
@@ -147,6 +160,7 @@ def impute(
     ],
     output: Annotated[
         Path,
+        # NOTE: if exists = False, other checks still run if the Path happens to (file/dir) exist
         typer.Argument(
             exists=False,
             file_okay=True,
@@ -183,6 +197,14 @@ def impute(
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-F",
+            help="Force imputing the data if INPUT is identical to OUTPUT",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -194,9 +216,32 @@ def impute(
 ) -> None:
     """
     Impute the column COL in a CSV file INPUT. Will look for the
-    symbol FLAG in COL and substitute with a random
+    symbol FLAG in COL and replace with a random
     integer in the closed range RANGE. Save the resulting data to OUTPUT.
     """
+    if output.is_file():
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+        )
+        if not overwrite_file:
+            print("Won't overwrite")
+            raise typer.Abort()
+
+    if input == output and not force:
+        err_console.print(
+            "Cannot specify output to be identical to input. Use the --force/-F option to force this behavior"
+        )
+        raise typer.Abort()
+
+    create_dir = False
+    if not output.parent.is_dir():
+        create_dir = Confirm.ask(
+            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
+        )
+        if not create_dir:
+            print("Won't create directories")
+            raise typer.Abort()
+
     df = pl.read_csv(input, infer_schema_length=0)
 
     if not fill_cols_exist(df, [fill_col]):
@@ -213,24 +258,6 @@ def impute(
         err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
         raise typer.Abort()
 
-    if not output.parent.is_dir():
-        create_dir = Confirm.ask(
-            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any parents?"
-        )
-        if create_dir:
-            output.parent.mkdir(parents=True)
-        else:
-            print("Won't create directories")
-            raise typer.Abort()
-
-    if output.is_file():
-        overwrite_file = Confirm.ask(
-            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
-        )
-        if not overwrite_file:
-            print("Won't overwrite")
-            raise typer.Abort()
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -242,12 +269,11 @@ def impute(
         cast_type = ColType[col_type]
 
         t0 = time.perf_counter()
-        # TODO: can I actually do this without having to compute random integers for every row?
         df = df.with_columns(
             pl.when(pl.col(fill_col) == fill_flag)
             .then(
                 pl.lit(
-                    # must specify size to be height of df despite not filling every row
+                    # NOTE: must specify size to be height of df despite not filling every row
                     # thus, we get "new" rand int per row
                     rng.integers(
                         fill_range_int.lb, fill_range_int.ub + 1, size=df.height
@@ -259,6 +285,10 @@ def impute(
             .cast(cast_type.value)
         )
         t1 = time.perf_counter()
+
+        if create_dir:
+            output.parent.mkdir(parents=True)
+
         df.write_csv(output)
 
     print("[green]Finished imputing[/green]...")
@@ -333,6 +363,14 @@ def impute_pair(
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-F",
+            help="Force imputing the data if INPUT is identical to OUTPUT",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -351,6 +389,12 @@ def impute_pair(
     values of the denominator column. Save the resulting data to OUTPUT.
     """
     df = pl.read_csv(input, infer_schema_length=0)
+
+    if input == output and not force:
+        err_console.print(
+            "Cannot specify output to be identical to input. Use the --force/-F option to force this behavior"
+        )
+        raise typer.Abort()
 
     fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
     if not fill_cols_exist(df, list(fill_cols_parsed)):
@@ -376,7 +420,7 @@ def impute_pair(
 
     if not output.parent.is_dir():
         create_dir = Confirm.ask(
-            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any parents?"
+            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
         )
         if create_dir:
             output.parent.mkdir(parents=True)
