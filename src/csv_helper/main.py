@@ -384,10 +384,33 @@ def impute_pair(
     Impute a pair of columns COLS in a CSV file INPUT. Will look for the
     symbol FLAG in COLS and substitute with a random
     integer in the closed range RANGE. Importantly, the pair of columns
-    are comprised of a numerator column and a denominator column such that
+    is comprised of a numerator column and a denominator column such that
     the imputed values of the numerator column must not exceed the imputed
     values of the denominator column. Save the resulting data to OUTPUT.
     """
+    if output.is_file():
+        overwrite_file = Confirm.ask(
+            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+        )
+        if not overwrite_file:
+            print("Won't overwrite")
+            raise typer.Abort()
+
+    if input == output and not force:
+        err_console.print(
+            "Cannot specify output to be identical to input. Use the --force/-F option to force this behavior"
+        )
+        raise typer.Abort()
+
+    create_dir = False
+    if not output.parent.is_dir():
+        create_dir = Confirm.ask(
+            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
+        )
+        if not create_dir:
+            print("Won't create directories")
+            raise typer.Abort()
+
     df = pl.read_csv(input, infer_schema_length=0)
 
     if input == output and not force:
@@ -417,24 +440,6 @@ def impute_pair(
             f"Cannot find any instances of {fill_flag} in either {fill_cols_parsed.numerator} or {fill_cols_parsed.denominator}"
         )
         raise typer.Abort()
-
-    if not output.parent.is_dir():
-        create_dir = Confirm.ask(
-            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
-        )
-        if create_dir:
-            output.parent.mkdir(parents=True)
-        else:
-            print("Won't create directories")
-            raise typer.Abort()
-
-    if output.is_file():
-        overwrite_file = Confirm.ask(
-            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
-        )
-        if not overwrite_file:
-            print("Won't overwrite")
-            raise typer.Abort()
 
     with Progress(
         SpinnerColumn(),
@@ -491,6 +496,10 @@ def impute_pair(
             .cast(cast_type.value)
         )
         t1 = time.perf_counter()
+
+        if create_dir:
+            output.parent.mkdir(parents=True)
+
         df.write_csv(output)
 
     print("[green]Finished imputing[/green]...")
