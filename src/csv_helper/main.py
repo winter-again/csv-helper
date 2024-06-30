@@ -3,6 +3,7 @@ from enum import Enum
 from pathlib import Path
 from typing import NamedTuple, Optional
 
+import click
 import numpy as np
 import polars as pl
 import typer
@@ -25,16 +26,11 @@ class FillCols(NamedTuple):
     denominator: str
 
 
+# NOTE: see https://github.com/tiangolo/typer/issues/151#issuecomment-1975322806
+# for workaround for working with enums like this
 class ColType(Enum):
     INT64 = pl.Int64
     FLOAT64 = pl.Float64
-
-    def __init__(self, val):
-        self.val = val
-
-    # @property
-    # def value(self):
-    #     return self.val
 
 
 app = typer.Typer()
@@ -174,14 +170,23 @@ def impute(
             help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
         ),
     ],
+    # col_type: Annotated[
+    #     ColType,
+    #     typer.Option(
+    #         "--type",
+    #         "-t",
+    #         help="Data type of COL. Can be a Polars Int64 or Float64.",
+    #     ),
+    # ] = ColType.INT64,
     col_type: Annotated[
-        ColType,
+        str,
         typer.Option(
             "--type",
             "-t",
             help="Data type of COL. Can be a Polars Int64 or Float64.",
+            click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
-    ] = ColType.INT64.value,
+    ] = ColType.INT64.name,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -233,6 +238,7 @@ def impute(
             print("Won't overwrite")
             raise typer.Abort()
 
+    cast_type = ColType[col_type]
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -256,7 +262,7 @@ def impute(
             )
             .otherwise(pl.col(fill_col))
             .alias(fill_col)
-            .cast(col_type.value)
+            .cast(cast_type.value)
         )
         t1 = time.perf_counter()
         df.write_csv(output)
@@ -326,7 +332,7 @@ def impute_pair(
         typer.Option(
             "--type", "-t", help="Data type of COLS. Can be a Polars Int64 or Float64."
         ),
-    ] = ColType.INT64.value,
+    ] = ColType.INT64,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
