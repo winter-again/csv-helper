@@ -27,7 +27,7 @@ class FillCols(NamedTuple):
 
 
 # NOTE: see https://github.com/tiangolo/typer/issues/151#issuecomment-1975322806
-# for workaround for working with enums like this
+# for workaround for working with enums like this such that Typer understands the args properly
 class ColType(Enum):
     INT64 = pl.Int64
     FLOAT64 = pl.Float64
@@ -170,14 +170,6 @@ def impute(
             help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
         ),
     ],
-    # col_type: Annotated[
-    #     ColType,
-    #     typer.Option(
-    #         "--type",
-    #         "-t",
-    #         help="Data type of COL. Can be a Polars Int64 or Float64.",
-    #     ),
-    # ] = ColType.INT64,
     col_type: Annotated[
         str,
         typer.Option(
@@ -238,7 +230,6 @@ def impute(
             print("Won't overwrite")
             raise typer.Abort()
 
-    cast_type = ColType[col_type]
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -247,6 +238,8 @@ def impute(
         progress.add_task(description="Imputing...", total=None)
 
         rng = np.random.default_rng(seed)
+        cast_type = ColType[col_type]
+
         t0 = time.perf_counter()
         # TODO: can I actually do this without having to compute random integers for every row?
         df = df.with_columns(
@@ -328,11 +321,14 @@ def impute_pair(
         ),
     ],
     col_type: Annotated[
-        ColType,
+        str,
         typer.Option(
-            "--type", "-t", help="Data type of COLS. Can be a Polars Int64 or Float64."
+            "--type",
+            "-t",
+            help="Data type of COLS. Can be a Polars Int64 or Float64.",
+            click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
-    ] = ColType.INT64,
+    ] = ColType.INT64.name,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -393,6 +389,8 @@ def impute_pair(
         progress.add_task(description="Imputing...", total=None)
 
         rng = np.random.default_rng(seed)
+        cast_type = ColType[col_type]
+
         t0 = time.perf_counter()
         df = df.with_columns(
             pl.when(pl.col(fill_cols_parsed.denominator) == fill_flag)
@@ -405,7 +403,7 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.denominator))
             .alias(fill_cols_parsed.denominator)
-            .cast(col_type.value)
+            .cast(cast_type.value)
         ).with_columns(
             pl.when(
                 (pl.col(fill_cols_parsed.numerator) == fill_flag)
@@ -435,7 +433,7 @@ def impute_pair(
             )
             .otherwise(pl.col(fill_cols_parsed.numerator))
             .alias(fill_cols_parsed[0])
-            .cast(col_type.value)
+            .cast(cast_type.value)
         )
         t1 = time.perf_counter()
         df.write_csv(output)
