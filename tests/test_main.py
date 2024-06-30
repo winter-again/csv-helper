@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 
-def test_preview_cmd():
+def test_preview():
     result = runner.invoke(
         app, ["preview", "./tests/data/test_impute_data.csv", "-n", "15"]
     )
