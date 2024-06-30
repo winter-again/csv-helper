@@ -10,7 +10,7 @@ import typer
 from numpy.random import Generator
 from rich import print
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, track
 from rich.prompt import Confirm
 from rich.table import Table
 from typing_extensions import Annotated
@@ -229,6 +229,7 @@ def impute(
             print("Won't create directories")
             raise typer.Abort()
 
+    # TODO: pull this into a sep func so it can be reused by impute-dir?
     df = pl.read_csv(input, infer_schema_length=0)
 
     if not fill_cols_exist(df, [fill_col]):
@@ -293,6 +294,150 @@ def impute(
         print(table)
 
         print(df.filter(pl.col(fill_col) <= fill_range_int.ub).head())
+
+
+@app.command("impute-dir")
+def impute_dir(
+    input: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Directory of CSV files to impute",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Argument(
+            exists=False,
+            file_okay=False,
+            dir_okay=True,
+            writable=True,
+            help="Directory to save output CSV files",
+        ),
+    ],
+    fill_col: Annotated[
+        str, typer.Option("--col", "-c", help="Name of the column to impute")
+    ],
+    fill_flag: Annotated[
+        str,
+        typer.Option("--flag", "-f", help="Flag (string) to look for in COL"),
+    ],
+    fill_range: Annotated[
+        str,
+        typer.Option(
+            "--range",
+            "-r",
+            help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
+        ),
+    ],
+    col_type: Annotated[
+        str,
+        typer.Option(
+            "--type",
+            "-t",
+            help="Data type of COL. Can be a Polars Int64 or Float64.",
+            click_type=click.Choice(ColType._member_names_, case_sensitive=False),
+        ),
+    ] = ColType.INT64.name,
+    seed: Annotated[
+        int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
+    ] = 123,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-F",
+            help="Force imputing the data if INPUT is identical to OUTPUT",
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Whether to show additional imputation summary information",
+        ),
+    ] = False,
+) -> None:
+    """
+    Impute the column COL in a directory INPUT of CSV files. Will look for the symbol FLAG
+    in COL and replace with a random integer n the closed range RANGE. Save the resulting
+    data to OUTPUT.
+    """
+    if input == output:
+        err_console.print("Cannot specify output dir to be identical to input dir")
+        raise typer.Abort()
+
+    # TODO: check that this makes sense for context of output being a path to a dir
+    create_dir = False
+    if not output.parent.is_dir():
+        create_dir = Confirm.ask(
+            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
+        )
+        if not create_dir:
+            print("Won't create directories")
+            raise typer.Abort()
+
+    files = list(input.glob("*.csv"))
+
+    # TODO: use prog bar instead of spinner?
+    # with Progress(
+    #     SpinnerColumn(),
+    #     TextColumn("[progress.description]{task.description}"),
+    #     transient=True,
+    # ) as progress:
+    #     progress.add_task(description="Imputing...", total=None)
+
+    # TODO: should seed be allowed to stay same? but wouldn't make sense to have user specify tons of seeds
+    for file in track(files, description="Imputing files..."):
+        df = pl.read_csv(file, infer_schema_length=0)
+
+        if not fill_cols_exist(df, [fill_col]):
+            err_console.print(f"Column {fill_col} cannot be found in {input}")
+            raise typer.Abort()
+
+        fill_range_int = parse_validate_fill_range(fill_range)
+        if fill_range_int is None:
+            err_console.print(f"Invalid range given for --range: {fill_range}")
+            raise typer.Abort()
+
+        # TODO: add this back when I figure out verbose table output since this is where it's used
+        # imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
+        if not fill_flag_exists(df, fill_col, fill_flag):
+            err_console.print(
+                f"Cannot find any instances of '{fill_flag}' in {fill_col}"
+            )
+            raise typer.Abort()
+
+        rng = np.random.default_rng(seed)
+        cast_type = ColType[col_type]
+
+        # t0 = time.perf_counter()
+        df = df.with_columns(
+            pl.when(pl.col(fill_col) == fill_flag)
+            .then(
+                pl.lit(
+                    # NOTE: must specify size to be height of df despite not filling every row
+                    # thus, we get "new" rand int per row
+                    rng.integers(
+                        fill_range_int.lb, fill_range_int.ub + 1, size=df.height
+                    )
+                )
+            )
+            .otherwise(pl.col(fill_col))
+            .alias(fill_col)
+            .cast(cast_type.value)
+        )
+        # t1 = time.perf_counter()
+
+        # TODO: probably only need this for the first file not all
+        if create_dir and not output.parent.is_dir():
+            output.parent.mkdir(parents=True)
+
+        df.write_csv(output / file.name)
 
 
 @app.command("impute-pair")
