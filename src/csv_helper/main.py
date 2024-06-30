@@ -133,19 +133,6 @@ def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -
     return val
 
 
-# TODO: get rid of this when done
-@app.command()
-def test(
-    file: Annotated[
-        Path,
-        typer.Argument(
-            exists=False, file_okay=False, dir_okay=False, writable=True, readable=False
-        ),
-    ],
-) -> None:
-    print(f"File: {file}")
-
-
 @app.command()
 def impute(
     input: Annotated[
