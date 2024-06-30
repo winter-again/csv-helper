@@ -28,6 +28,7 @@ class FillCols(NamedTuple):
 
 # NOTE: see https://github.com/tiangolo/typer/issues/151#issuecomment-1975322806
 # for workaround for working with enums like this such that Typer understands the args properly
+# without having to translate strings or ints to the values we really want
 class ColType(Enum):
     INT64 = pl.Int64
     FLOAT64 = pl.Float64
@@ -372,6 +373,16 @@ def impute_pair(
             f"Cannot find any instances of {fill_flag} in either {fill_cols_parsed.numerator} or {fill_cols_parsed.denominator}"
         )
         raise typer.Abort()
+
+    if not output.parent.is_dir():
+        create_dir = Confirm.ask(
+            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any parents?"
+        )
+        if create_dir:
+            output.parent.mkdir(parents=True)
+        else:
+            print("Won't create directories")
+            raise typer.Abort()
 
     if output.is_file():
         overwrite_file = Confirm.ask(
