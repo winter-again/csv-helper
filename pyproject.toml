@@ -7,8 +7,8 @@ authors = [
 ]
 dependencies = [
     "typer>=0.12.3",
-    "polars>=0.20.30",
-    "numpy>=1.26.4",
+    "polars>=1.2.1",
+    "numpy>=2.0.0",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
