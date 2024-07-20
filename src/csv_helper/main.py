@@ -298,7 +298,7 @@ def impute(
 
 @app.command("impute-dir")
 def impute_dir(
-    input: Annotated[
+    input_dir: Annotated[
         Path,
         typer.Argument(
             exists=True,
@@ -308,7 +308,7 @@ def impute_dir(
             help="Directory of CSV files to impute",
         ),
     ],
-    output: Annotated[
+    output_dir: Annotated[
         Path,
         typer.Argument(
             exists=False,
@@ -345,14 +345,14 @@ def impute_dir(
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
-    force: Annotated[
-        bool,
-        typer.Option(
-            "--force",
-            "-F",
-            help="Force imputing the data if INPUT is identical to OUTPUT",
-        ),
-    ] = False,
+    # force: Annotated[
+    #     bool,
+    #     typer.Option(
+    #         "--force",
+    #         "-F",
+    #         help="Force imputing the data if INPUT is identical to OUTPUT",
+    #     ),
+    # ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -363,25 +363,40 @@ def impute_dir(
     ] = False,
 ) -> None:
     """
-    Impute the column COL in a directory INPUT of CSV files. Will look for the symbol FLAG
+    Impute the column COL for a directory INPUT_DIR of CSV files. Will look for the symbol FLAG
     in COL and replace with a random integer n the closed range RANGE. Save the resulting
-    data to OUTPUT.
+    data to OUTPUT_DIR.
     """
-    if input == output:
+
+    # TODO: all of these checks need to make sense for directories instead of files
+    # TODO: better way of checking and handling if output dir already has files
+    # does it make sense to check on a per-file basis?
+    # or should it just blindly reject if the dir isn't empty and then maybe we can have --force flag
+
+    # if output.is_file():
+    #     overwrite_file = Confirm.ask(
+    #         f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+    #     )
+    #     if not overwrite_file:
+    #         print("Won't overwrite")
+    #         raise typer.Abort()
+
+    if input_dir == output_dir:
         err_console.print("Cannot specify output dir to be identical to input dir")
         raise typer.Abort()
 
     # TODO: check that this makes sense for context of output being a path to a dir
+    # maybe this should be higher up in this case
     create_dir = False
-    if not output.parent.is_dir():
+    if not output_dir.parent.is_dir():
         create_dir = Confirm.ask(
-            f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
+            f"The specified output's parent directory [blue bold]{output_dir.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
         )
         if not create_dir:
             print("Won't create directories")
             raise typer.Abort()
 
-    files = list(input.glob("*.csv"))
+    files = list(input_dir.glob("*.csv"))
 
     # TODO: use prog bar instead of spinner?
     # with Progress(
@@ -396,7 +411,7 @@ def impute_dir(
         df = pl.read_csv(file, infer_schema_length=0)
 
         if not fill_cols_exist(df, [fill_col]):
-            err_console.print(f"Column {fill_col} cannot be found in {input}")
+            err_console.print(f"Column {fill_col} cannot be found in {input_dir}")
             raise typer.Abort()
 
         fill_range_int = parse_validate_fill_range(fill_range)
@@ -434,10 +449,10 @@ def impute_dir(
         # t1 = time.perf_counter()
 
         # TODO: probably only need this for the first file not all
-        if create_dir and not output.parent.is_dir():
-            output.parent.mkdir(parents=True)
+        if create_dir and not output_dir.parent.is_dir():
+            output_dir.parent.mkdir(parents=True)
 
-        df.write_csv(output / file.name)
+        df.write_csv(output_dir / file.name)
 
 
 @app.command("impute-pair")
