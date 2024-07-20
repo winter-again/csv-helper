@@ -14,10 +14,10 @@ def test_preview():
 
     assert Path("./tests/data/test_impute_data.csv").is_file()
     assert result.exit_code == 0
+    # NOTE: this assert isn't crucial; offering another potential output string for Windows
     assert (
         "File: tests/data/test_impute_data.csv\nshape: (15, 4)" in result.stdout
-        or "File: tests\\\\data\\\\test_impute_data.csv\nshape: (15, 4)"
-        in result.stdout
+        or "File: tests\\data\\test_impute_data.csv\nshape: (15, 4)" in result.stdout
     )
 
 
