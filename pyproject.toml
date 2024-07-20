@@ -10,7 +10,7 @@ dependencies = [
     "polars>=0.20.30",
     "numpy>=1.26.4",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 readme = "README.md"
 license = {text = "MIT"}
 
