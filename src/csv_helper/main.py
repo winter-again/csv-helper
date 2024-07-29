@@ -10,7 +10,7 @@ import typer
 from numpy.random import Generator
 from rich import print
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, track
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 from rich.table import Table
 from typing_extensions import Annotated
@@ -49,20 +49,17 @@ def parse_validate_fill_range(fill_range: str) -> Optional[FillRange]:
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
         return None
-    else:
-        fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
-        if fill_range_int.lb > fill_range_int.ub:
-            return None
-        else:
-            return fill_range_int
+    fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
+    if fill_range_int.lb > fill_range_int.ub:
+        return None
+    return fill_range_int
 
 
 def fill_flag_exists(df: pl.DataFrame, fill_col: str, fill_flag: str) -> bool:
     imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
     if imp_size == 0:
         return False
-    else:
-        return True
+    return True
 
 
 @app.command()
@@ -110,7 +107,7 @@ def check(
     ],
 ) -> None:
     """
-    Check the column COL in INPUT for occurrences of FLAG.
+    Check a column in a CSV file for occurrences of some string flag.
     """
     df = pl.read_csv(input, infer_schema_length=0)
     if not fill_cols_exist(df, [fill_col]):
@@ -122,15 +119,6 @@ def check(
         f"Found [blue]{imp_size:_}[/blue] occurrences of '{fill_flag}' in '{fill_col}' -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_})"
     )
     print(df.filter(pl.col(fill_col) == fill_flag).head())
-
-
-def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -> int:
-    """
-    Return a random integer from a range that is capped
-    at the 'denominator' value
-    """
-    val = rng.integers(fill_range_int.lb, denominator + 1)
-    return val
 
 
 @app.command()
@@ -162,14 +150,18 @@ def impute(
     ],
     fill_flag: Annotated[
         str,
-        typer.Option("--flag", "-f", help="Flag (string) to look for in COL"),
+        typer.Option(
+            "--flag",
+            "-f",
+            help="Flag (string) to look for and replace in the target column",
+        ),
     ],
     fill_range: Annotated[
         str,
         typer.Option(
             "--range",
             "-r",
-            help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
+            help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
         ),
     ],
     col_type: Annotated[
@@ -177,7 +169,7 @@ def impute(
         typer.Option(
             "--type",
             "-t",
-            help="Data type of COL. Can be a Polars Int64 or Float64.",
+            help="Intended data type of the target column. Can be a Polars Int64 or Float64.",
             click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
     ] = ColType.INT64.name,
@@ -189,7 +181,7 @@ def impute(
         typer.Option(
             "--force",
             "-F",
-            help="Force imputing the data if INPUT is identical to OUTPUT",
+            help="Force imputing the data even if the specified output file already exists",
         ),
     ] = False,
     verbose: Annotated[
@@ -202,23 +194,16 @@ def impute(
     ] = False,
 ) -> None:
     """
-    Impute the column COL in a CSV file INPUT. Will look for the
-    symbol FLAG in COL and replace with a random
-    integer in the closed range RANGE. Save the resulting data to OUTPUT.
+    Impute a target column in a CSV file. Will look for a specific filler flag in the target column
+    and replace with a random integer from the specified range. Save the result to a new CSV file.
     """
-    if output.is_file():
+    if output.is_file() and not force:
         overwrite_file = Confirm.ask(
-            f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
+            f"The file [blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
         )
         if not overwrite_file:
             print("Won't overwrite")
             raise typer.Abort()
-
-    if input == output and not force:
-        err_console.print(
-            "Cannot specify output to be identical to input. Use the --force/-F option to force this behavior"
-        )
-        raise typer.Abort()
 
     create_dir = False
     if not output.parent.is_dir():
@@ -229,7 +214,6 @@ def impute(
             print("Won't create directories")
             raise typer.Abort()
 
-    # TODO: pull this into a sep func so it can be reused by impute-dir?
     df = pl.read_csv(input, infer_schema_length=0)
 
     if not fill_cols_exist(df, [fill_col]):
@@ -241,10 +225,12 @@ def impute(
         err_console.print(f"Invalid range given for --range: {fill_range}")
         raise typer.Abort()
 
-    imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
     if not fill_flag_exists(df, fill_col, fill_flag):
         err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
         raise typer.Abort()
+
+    if verbose:
+        imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
 
     with Progress(
         SpinnerColumn(),
@@ -287,7 +273,6 @@ def impute(
         table.add_row(
             "[blue]Proportion of imputed values[/blue]",
             f"{(imp_size / df.height):0.2f} (n = {df.height:_})",
-            end_section=True,
         )
         table.add_row("[blue]Seed[/blue]", f"{seed}")
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
@@ -323,14 +308,18 @@ def impute_dir(
     ],
     fill_flag: Annotated[
         str,
-        typer.Option("--flag", "-f", help="Flag (string) to look for in COL"),
+        typer.Option(
+            "--flag",
+            "-f",
+            help="Flag (string) to look for and replace in the target column",
+        ),
     ],
     fill_range: Annotated[
         str,
         typer.Option(
             "--range",
             "-r",
-            help="Closed integer interval in which to sample for random integer imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
+            help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
         ),
     ],
     col_type: Annotated[
@@ -338,21 +327,27 @@ def impute_dir(
         typer.Option(
             "--type",
             "-t",
-            help="Data type of COL. Can be a Polars Int64 or Float64.",
+            help="Intended data type of the target column. Can be a Polars Int64 or Float64.",
             click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
     ] = ColType.INT64.name,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
-    # force: Annotated[
-    #     bool,
-    #     typer.Option(
-    #         "--force",
-    #         "-F",
-    #         help="Force imputing the data if INPUT is identical to OUTPUT",
-    #     ),
-    # ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-F",
+            help="Force imputing the data if INPUT is identical to OUTPUT",
+        ),
+    ] = False,
+    suffix: Annotated[
+        str,
+        typer.Option(
+            "--suffix", "-x", help="Optional suffix to append to each imputed CSV file"
+        ),
+    ] = "",
     verbose: Annotated[
         bool,
         typer.Option(
@@ -363,55 +358,43 @@ def impute_dir(
     ] = False,
 ) -> None:
     """
-    Impute the column COL for a directory INPUT_DIR of CSV files. Will look for the symbol FLAG
-    in COL and replace with a random integer n the closed range RANGE. Save the resulting
-    data to OUTPUT_DIR.
+    Impute a target column for a directory of uniform CSV files. Will look for a specific filler flag in the target column
+    and replace with a random integer from the the specified range. Save the result in the given output directory.
     """
-
-    # TODO: all of these checks need to make sense for directories instead of files
-    # TODO: better way of checking and handling if output dir already has files
-    # does it make sense to check on a per-file basis?
-    # or should it just blindly reject if the dir isn't empty and then maybe we can have --force flag
-
-    # if output.is_file():
-    #     overwrite_file = Confirm.ask(
-    #         f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
-    #     )
-    #     if not overwrite_file:
-    #         print("Won't overwrite")
-    #         raise typer.Abort()
-
-    if input_dir == output_dir:
-        err_console.print("Cannot specify output dir to be identical to input dir")
+    files = list(input_dir.glob("*.csv"))
+    if len(files) == 0:
+        err_console.print(
+            f"The specified input directory [blue bold]{input_dir}[/blue bold] is either empty or doesn't contain any CSV files."
+        )
         raise typer.Abort()
 
-    # TODO: check that this makes sense for context of output being a path to a dir
-    # maybe this should be higher up in this case
     create_dir = False
-    if not output_dir.parent.is_dir():
+    if not output_dir.is_dir():
         create_dir = Confirm.ask(
-            f"The specified output's parent directory [blue bold]{output_dir.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
+            f"The specified output directory [blue bold]{output_dir}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
         )
         if not create_dir:
             print("Won't create directories")
             raise typer.Abort()
 
-    files = list(input_dir.glob("*.csv"))
+    for file in files:
+        if suffix != "":
+            output_file = output_dir / f"{file.stem}_{suffix}{file.suffix}"
+        else:
+            output_file = output_dir / file.name
 
-    # TODO: use prog bar instead of spinner?
-    # with Progress(
-    #     SpinnerColumn(),
-    #     TextColumn("[progress.description]{task.description}"),
-    #     transient=True,
-    # ) as progress:
-    #     progress.add_task(description="Imputing...", total=None)
+        if output_file.is_file() and not force:
+            overwrite_file = Confirm.ask(
+                f"The intended output file [blue bold]{output_file}[/blue bold] already exists. Should it be overwritten?"
+            )
+            if not overwrite_file:
+                print("Won't overwrite")
+                raise typer.Abort()
 
-    # TODO: should seed be allowed to stay same? but wouldn't make sense to have user specify tons of seeds
-    for file in track(files, description="Imputing files..."):
         df = pl.read_csv(file, infer_schema_length=0)
 
         if not fill_cols_exist(df, [fill_col]):
-            err_console.print(f"Column {fill_col} cannot be found in {input_dir}")
+            err_console.print(f"Column {fill_col} cannot be found in {file}")
             raise typer.Abort()
 
         fill_range_int = parse_validate_fill_range(fill_range)
@@ -419,8 +402,9 @@ def impute_dir(
             err_console.print(f"Invalid range given for --range: {fill_range}")
             raise typer.Abort()
 
-        # TODO: add this back when I figure out verbose table output since this is where it's used
-        # imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
+        if verbose:
+            imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
+
         if not fill_flag_exists(df, fill_col, fill_flag):
             err_console.print(
                 f"Cannot find any instances of '{fill_flag}' in {fill_col}"
@@ -430,7 +414,7 @@ def impute_dir(
         rng = np.random.default_rng(seed)
         cast_type = ColType[col_type]
 
-        # t0 = time.perf_counter()
+        t0 = time.perf_counter()
         df = df.with_columns(
             pl.when(pl.col(fill_col) == fill_flag)
             .then(
@@ -446,13 +430,36 @@ def impute_dir(
             .alias(fill_col)
             .cast(cast_type.value)
         )
-        # t1 = time.perf_counter()
+        t1 = time.perf_counter()
 
-        # TODO: probably only need this for the first file not all
-        if create_dir and not output_dir.parent.is_dir():
-            output_dir.parent.mkdir(parents=True)
+        if create_dir:
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-        df.write_csv(output_dir / file.name)
+        df.write_csv(output_file)
+
+        print(f"\nFinished imputing [blue]{file}[/blue]...")
+
+        if verbose:
+            table = Table(title="Imputation statistics", show_header=False)
+            table.add_row("[blue]Count of imputed values[/blue]", f"{imp_size:_}")
+            table.add_row(
+                "[blue]Proportion of imputed values[/blue]",
+                f"{(imp_size / df.height):0.2f} (n = {df.height:_})",
+            )
+            table.add_row("[blue]Seed[/blue]", f"{seed}")
+            table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
+            print(table)
+
+            print(df.filter(pl.col(fill_col) <= fill_range_int.ub).head())
+
+
+def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -> int:
+    """
+    Return a random integer from a range that is capped
+    at the 'denominator' value
+    """
+    val = rng.integers(fill_range_int.lb, denominator + 1)
+    return val
 
 
 @app.command("impute-pair")
@@ -503,7 +510,7 @@ def impute_pair(
         typer.Option(
             "--type",
             "-t",
-            help="Data type of COLS. Can be a Polars Int64 or Float64.",
+            help="Intended data type of COLS. Can be a Polars Int64 or Float64.",
             click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
     ] = ColType.INT64.name,
@@ -529,11 +536,11 @@ def impute_pair(
 ):
     """
     Impute a pair of columns COLS in a CSV file INPUT. Will look for the
-    symbol FLAG in COLS and substitute with a random
-    integer in the closed range RANGE. Importantly, the pair of columns
-    is comprised of a numerator column and a denominator column such that
-    the imputed values of the numerator column must not exceed the imputed
-    values of the denominator column. Save the resulting data to OUTPUT.
+    symbol FLAG in COLS and substitute with a random integer in the closed
+    range RANGE. Importantly, the pair of columns is comprised of a numerator
+    column and a denominator column such that the imputed values of the
+    numerator column must not exceed the imputed values of the denominator
+    column. Save the resulting data to OUTPUT.
     """
     if output.is_file():
         overwrite_file = Confirm.ask(
@@ -673,7 +680,7 @@ def impute_pair(
         )
         table.add_row("[blue]Seed[/blue]", f"{seed}")
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
-        err_console.print(table)
+        print(table)
 
         print(
             df.filter(
