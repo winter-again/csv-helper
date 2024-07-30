@@ -31,7 +31,7 @@ def test_preview(test_data):
         msg = f"File: {test_data}"
     elif platform == "win32":
         msg = "File: tests\\data\\test_impute_data.csv"
-    assert result.stdout[: len(msg)].replace("\n", "") == msg
+    assert result.stdout.replace("\n", "")[: len(msg)] == msg
 
     out = dedent(
         """\
