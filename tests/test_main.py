@@ -12,13 +12,13 @@ def test_preview():
     result = runner.invoke(
         app, ["preview", "./tests/data/test_impute_data.csv", "-n", "15"]
     )
-
     assert result.exit_code == 0
     # NOTE: second is Windows file path
     assert (
         "File: tests/data/test_impute_data.csv" in result.stdout
         or "File: tests\\data\\test_impute_data.csv\nshape: (15, 4)" in result.stdout
     )
+
     out = dedent(
         """\
         shape: (15, 4)
@@ -54,6 +54,7 @@ def test_check():
         app, ["check", "./tests/data/test_impute_data.csv", "-c", "cases", "-f", "<=5"]
     )
     assert result.exit_code == 0
+
     out = dedent(
         """\
         Found 33 occurrences of '<=5' in 'cases' -> 0.38 of rows (n = 86)
@@ -103,9 +104,8 @@ def test_impute(tmp_path):
             "8",
         ],
     )
-
     assert result.exit_code == 0
-    assert out_file.is_file()
+    assert out_file.is_file() is True
 
     df_in = (
         pl.read_csv(inp_file, infer_schema_length=0)
@@ -120,7 +120,6 @@ def test_impute(tmp_path):
     df = df_in.join(df_out, on="id", how="inner", suffix="_imputed").filter(
         pl.col("cases") == f"<={fill_range[1]}"
     )
-
     assert (
         df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
         is False
@@ -145,7 +144,7 @@ def test_impute_output_exists(tmp_path):
 
     assert out_file.is_file() is False
     out_file.touch()
-    assert out_file.is_file()
+    assert out_file.is_file() is True
 
     result = runner.invoke(
         app,
@@ -163,7 +162,6 @@ def test_impute_output_exists(tmp_path):
             "8",
         ],
     )
-
     assert result.exit_code == 1
 
 
@@ -175,7 +173,7 @@ def test_impute_overwrite(tmp_path):
 
     assert out_file.is_file() is False
     out_file.touch()
-    assert out_file.is_file()
+    assert out_file.is_file() is True
 
     result = runner.invoke(
         app,
@@ -194,7 +192,6 @@ def test_impute_overwrite(tmp_path):
         ],
         input="y\n",
     )
-
     assert result.exit_code == 0
 
 
@@ -220,12 +217,11 @@ def test_impute_dir(tmp_path):
             "8",
         ],
     )
-
     assert result.exit_code == 0
     assert out_dir.is_dir()
     for i in range(5):
         f = out_dir / f"test_impute_data_{i}.csv"
-        assert f.is_file()
+        assert f.is_file() is True
 
     for input, output in zip(inp_dir.iterdir(), out_dir.iterdir()):
         df_in = (
@@ -242,7 +238,6 @@ def test_impute_dir(tmp_path):
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
-
         assert (
             df.select("cases_imputed")
             .to_series()
@@ -290,12 +285,11 @@ def test_impute_dir_force(tmp_path):
             "--force",
         ],
     )
-
     assert result.exit_code == 0
     assert out_dir.is_dir()
     for i in range(5):
         f = out_dir / f"test_impute_data_{i}.csv"
-        assert f.is_file()
+        assert f.is_file() is True
 
     for input, output in zip(inp_dir.iterdir(), out_dir.iterdir()):
         df_in = (
@@ -312,7 +306,6 @@ def test_impute_dir_force(tmp_path):
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
-
         assert (
             df.select("cases_imputed")
             .to_series()
@@ -357,12 +350,11 @@ def test_impute_dir_suffix(tmp_path):
             suffix,
         ],
     )
-
     assert result.exit_code == 0
-    assert out_dir.is_dir()
+    assert out_dir.is_dir() is True
     for i in range(5):
         f = out_dir / f"test_impute_data_{i}_{suffix}.csv"
-        assert f.is_file()
+        assert f.is_file() is True
 
     for input, output in zip(inp_dir.iterdir(), out_dir.iterdir()):
         df_in = (
@@ -379,7 +371,6 @@ def test_impute_dir_suffix(tmp_path):
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
-
         assert (
             df.select("cases_imputed")
             .to_series()
@@ -400,17 +391,18 @@ def test_impute_dir_suffix(tmp_path):
 
 
 def test_impute_pair(tmp_path):
+    inp_file = Path("./tests/data/test_impute_data.csv")
     tmp_dir = Path(tmp_path) / "csv-helper"
     tmp_dir.mkdir()
-    tmp_file = tmp_dir / "test_impute_pair_output.csv"
+    out_file = tmp_dir / "test_impute_pair_output.csv"
     fill_range = (1, 5)
 
     result = runner.invoke(
         app,
         [
             "impute-pair",
-            "./tests/data/test_impute_data.csv",
-            str(tmp_file),
+            str(inp_file),
+            str(out_file),
             "-c",
             "cases,all_cause",
             "-f",
@@ -421,17 +413,16 @@ def test_impute_pair(tmp_path):
             "8",
         ],
     )
-
     assert result.exit_code == 0
-    assert tmp_file.is_file()
+    assert out_file.is_file() is True
 
     df_in = (
-        pl.read_csv("./tests/data/test_impute_data.csv", infer_schema_length=0)
+        pl.read_csv(inp_file, infer_schema_length=0)
         .with_row_index(name="id")
         .select(["id", "cases", "all_cause"])
     )
     df_out = (
-        pl.read_csv(tmp_file, infer_schema_length=0)
+        pl.read_csv(out_file, infer_schema_length=0)
         .with_row_index(name="id")
         .select(["id", "cases", "all_cause"])
     )
@@ -439,7 +430,6 @@ def test_impute_pair(tmp_path):
         (pl.col("cases") == f"<={fill_range[1]}")
         | (pl.col("all_cause") == f"<={fill_range[1]}")
     )
-
     assert (
         df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
         is False
@@ -451,7 +441,6 @@ def test_impute_pair(tmp_path):
         .all()
         is False
     )
-
     assert (
         df.select(pl.col("cases"), pl.col("cases_imputed").cast(pl.Int64))
         .filter(
@@ -467,7 +456,6 @@ def test_impute_pair(tmp_path):
         .height
         == 0
     )
-
     assert (
         df.select(["cases_imputed", "all_cause_imputed"])
         .cast(pl.Int64)
