@@ -30,7 +30,9 @@ def test_preview(test_data):
     if platform == "linux" or platform == "darwin":
         msg = f"File: {test_data}"
     elif platform == "win32":
-        msg = "File: tests\\data\\test_impute_data.csv"
+        msg = f"File: {PureWindowsPath(test_data)}"
+    # NOTE: stripping newlines and then slicing; for some reason on macos and windows
+    # the stdout has newlines inserted
     assert result.stdout.replace("\n", "")[: len(msg)] == msg
 
     out = dedent(
