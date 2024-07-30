@@ -194,8 +194,8 @@ def impute(
     ] = False,
 ) -> None:
     """
-    Impute a target column in a CSV file. Will look for a specific filler flag in the target column
-    and replace with a random integer from the specified range. Save the result to a new CSV file.
+    Impute a target column in a CSV file. Will look for the specified filler flag in the target column
+    and replace it with a random integer from the specified range. Save the result to a new CSV file.
     """
     if output.is_file() and not force:
         overwrite_file = Confirm.ask(
