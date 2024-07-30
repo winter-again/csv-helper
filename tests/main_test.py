@@ -28,9 +28,10 @@ def test_preview(tmp_path, test_data):
 
     # NOTE: second is Windows file path
     assert (
-        f"File: {test_data}\nshape: (15, 4)" in result.stdout
+        f"File: {test_data}\nshape: (15, 4)" in result.stdout.strip("\n")
         # or "File: tests\\data\\test_impute_data.csv\nshape: (15, 4)" in result.stdout
-        or f"File: {PureWindowsPath(test_data)}\nshape: (15, 4)" in result.stdout
+        or f"File: {PureWindowsPath(test_data)}\nshape: (15, 4)"
+        in result.stdout.strip("\n")
     )
 
     out = dedent(
