@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path, PureWindowsPath
 from textwrap import dedent
+from sys import platform
 
 import polars as pl
 import pytest
@@ -26,12 +27,11 @@ def test_preview(test_data):
     result = runner.invoke(app, ["preview", str(test_data), "-n", "15"])
     assert result.exit_code == 0
 
-    assert (
-        f"File: {test_data}" in result.stdout
-        # NOTE: Windows file path
-        # or "File: tests\\data\\test_impute_data.csv" in result.stdout
-        or f"File: {PureWindowsPath(test_data)}" in result.stdout
-    )
+    if platform == "linux" or platform == "darwin":
+        msg = f"File: {test_data}"
+    elif platform == "win32":
+        msg = "File: tests\\data\\test_impute_data.csv"
+    assert result.stdout[: len(msg)].replace("\n", "") == msg
 
     out = dedent(
         """\
