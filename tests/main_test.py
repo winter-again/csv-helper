@@ -1,22 +1,36 @@
-from pathlib import Path
+import shutil
+from pathlib import Path, PureWindowsPath
 from textwrap import dedent
 
 import polars as pl
+import pytest
 from csv_helper.main import app
 from typer.testing import CliRunner
 
 runner = CliRunner()
 
 
-def test_preview():
-    result = runner.invoke(
-        app, ["preview", "./tests/data/test_impute_data.csv", "-n", "15"]
-    )
+@pytest.fixture
+def test_data(tmp_path) -> Path:
+    """
+    Fixture that moves test CSV data to new dir for testing and
+    returns the file's path
+    """
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    shutil.copy("./tests/data/test_impute_data.csv", data_dir)
+    return data_dir / "test_impute_data.csv"
+
+
+def test_preview(tmp_path, test_data):
+    result = runner.invoke(app, ["preview", str(test_data), "-n", "15"])
     assert result.exit_code == 0
+
     # NOTE: second is Windows file path
     assert (
-        "File: tests/data/test_impute_data.csv" in result.stdout
-        or "File: tests\\data\\test_impute_data.csv\nshape: (15, 4)" in result.stdout
+        f"File: {test_data}\nshape: (15, 4)" in result.stdout
+        # or "File: tests\\data\\test_impute_data.csv\nshape: (15, 4)" in result.stdout
+        or f"File: {PureWindowsPath(test_data)}\nshape: (15, 4)" in result.stdout
     )
 
     out = dedent(
