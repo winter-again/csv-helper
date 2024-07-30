@@ -23,6 +23,18 @@ def test_data(tmp_path) -> Path:
     return data_dir / "test_impute_data.csv"
 
 
+@pytest.fixture
+def test_data_dir(tmp_path) -> Path:
+    """
+    Fixture that moves test dir of CSV data to new dir for
+    testing and returns the dir's path
+    """
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    shutil.copytree("./tests/data/test_dir", data_dir / "test_dir")
+    return data_dir / "test_dir"
+
+
 def test_preview(test_data):
     result = runner.invoke(app, ["preview", str(test_data), "-n", "15"])
     assert result.exit_code == 0
@@ -31,6 +43,7 @@ def test_preview(test_data):
         msg = f"File: {test_data}"
     elif platform == "win32":
         msg = f"File: {PureWindowsPath(test_data)}"
+
     # NOTE: stripping newlines and then slicing; for some reason on macos and windows
     # the stdout has newlines inserted
     assert result.stdout.replace("\n", "")[: len(msg)] == msg
@@ -60,15 +73,14 @@ def test_preview(test_data):
     assert out in result.stdout
 
 
-def test_preview_not_file():
-    result = runner.invoke(app, ["preview", "./tests/data/test_dir", "-n", "15"])
+def test_preview_not_file(tmp_path):
+    dir = tmp_path / "data"
+    result = runner.invoke(app, ["preview", str(dir), "-n", "15"])
     assert result.exit_code == 2
 
 
-def test_check():
-    result = runner.invoke(
-        app, ["check", "./tests/data/test_impute_data.csv", "-c", "cases", "-f", "<=5"]
-    )
+def test_check(test_data):
+    result = runner.invoke(app, ["check", str(test_data), "-c", "cases", "-f", "<=5"])
     assert result.exit_code == 0
 
     out = dedent(
@@ -91,24 +103,21 @@ def test_check():
     assert result.stdout == out
 
 
-def test_check_not_file():
-    result = runner.invoke(
-        app, ["check", "./tests/data/test_dir", "-c", "cases", "-f", "<=5"]
-    )
+def test_check_not_file(tmp_path):
+    dir = tmp_path / "data"
+    result = runner.invoke(app, ["check", str(dir), "-c", "cases", "-f", "<=5"])
     assert result.exit_code == 2
 
 
-def test_impute(tmp_path):
-    inp_file = Path("./tests/data/test_impute_data.csv")
-    tmp_dir = Path(tmp_path)
-    out_file = tmp_dir / "test_impute_output.csv"
+def test_impute(tmp_path, test_data):
+    out_file = tmp_path / "test_impute_output.csv"
     fill_range = (1, 5)
 
     result = runner.invoke(
         app,
         [
             "impute",
-            str(inp_file),
+            str(test_data),
             str(out_file),
             "-c",
             "cases",
@@ -124,7 +133,7 @@ def test_impute(tmp_path):
     assert out_file.is_file() is True
 
     df_in = (
-        pl.read_csv(inp_file, infer_schema_length=0)
+        pl.read_csv(test_data, infer_schema_length=0)
         .with_row_index(name="id")
         .select(["id", "cases"])
     )
@@ -152,10 +161,8 @@ def test_impute(tmp_path):
     )
 
 
-def test_impute_output_exists(tmp_path):
-    inp_file = Path("./tests/data/test_impute_data.csv")
-    tmp_dir = Path(tmp_path)
-    out_file = tmp_dir / "output_that_exists.csv"
+def test_impute_output_exists(tmp_path, test_data):
+    out_file = tmp_path / "output_that_exists.csv"
     fill_range = (1, 5)
 
     assert out_file.is_file() is False
@@ -166,7 +173,7 @@ def test_impute_output_exists(tmp_path):
         app,
         [
             "impute",
-            str(inp_file),
+            str(test_data),
             str(out_file),
             "-c",
             "cases",
@@ -181,10 +188,8 @@ def test_impute_output_exists(tmp_path):
     assert result.exit_code == 1
 
 
-def test_impute_overwrite(tmp_path):
-    inp_file = Path("./tests/data/test_impute_data.csv")
-    tmp_dir = Path(tmp_path)
-    out_file = tmp_dir / "output_that_exists.csv"
+def test_impute_overwrite(tmp_path, test_data):
+    out_file = tmp_path / "output_that_exists.csv"
     fill_range = (1, 5)
 
     assert out_file.is_file() is False
@@ -195,7 +200,7 @@ def test_impute_overwrite(tmp_path):
         app,
         [
             "impute",
-            str(inp_file),
+            str(test_data),
             str(out_file),
             "-c",
             "cases",
@@ -211,9 +216,8 @@ def test_impute_overwrite(tmp_path):
     assert result.exit_code == 0
 
 
-def test_impute_dir(tmp_path):
-    inp_dir = Path("./tests/data/test_dir")
-    out_dir = Path(tmp_path) / "test_impute_output_dir"
+def test_impute_dir(tmp_path, test_data_dir):
+    out_dir = Path(tmp_path) / "test_impute_dir_output"
     out_dir.mkdir()
     fill_range = (1, 5)
 
@@ -221,7 +225,7 @@ def test_impute_dir(tmp_path):
         app,
         [
             "impute-dir",
-            str(inp_dir),
+            str(test_data_dir),
             str(out_dir),
             "-c",
             "cases",
@@ -239,7 +243,7 @@ def test_impute_dir(tmp_path):
         f = out_dir / f"test_impute_data_{i}.csv"
         assert f.is_file() is True
 
-    for input, output in zip(inp_dir.iterdir(), out_dir.iterdir()):
+    for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
         df_in = (
             pl.read_csv(input, infer_schema_length=0)
             .with_row_index(name="id")
@@ -273,13 +277,12 @@ def test_impute_dir(tmp_path):
         )
 
 
-def test_impute_dir_force(tmp_path):
-    inp_dir = Path("./tests/data/test_dir")
-    out_dir = Path(tmp_path) / "test_impute_output_dir"
+def test_impute_dir_force(tmp_path, test_data_dir):
+    out_dir = Path(tmp_path) / "test_impute_dir_output"
     out_dir.mkdir()
     fill_range = (1, 5)
 
-    inp_files = inp_dir.glob("*.csv")
+    inp_files = test_data_dir.glob("*.csv")
     for file in inp_files:
         out_file = out_dir / file.name
         out_file.touch()
@@ -288,7 +291,7 @@ def test_impute_dir_force(tmp_path):
         app,
         [
             "impute-dir",
-            str(inp_dir),
+            str(test_data_dir),
             str(out_dir),
             "-c",
             "cases",
@@ -307,7 +310,7 @@ def test_impute_dir_force(tmp_path):
         f = out_dir / f"test_impute_data_{i}.csv"
         assert f.is_file() is True
 
-    for input, output in zip(inp_dir.iterdir(), out_dir.iterdir()):
+    for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
         df_in = (
             pl.read_csv(input, infer_schema_length=0)
             .with_row_index(name="id")
@@ -341,9 +344,8 @@ def test_impute_dir_force(tmp_path):
         )
 
 
-def test_impute_dir_suffix(tmp_path):
-    inp_dir = Path("./tests/data/test_dir")
-    out_dir = Path(tmp_path) / "test_impute_output_dir"
+def test_impute_dir_suffix(tmp_path, test_data_dir):
+    out_dir = Path(tmp_path) / "test_impute_dir_output"
     out_dir.mkdir()
     fill_range = (1, 5)
     suffix = "imputed"
@@ -352,7 +354,7 @@ def test_impute_dir_suffix(tmp_path):
         app,
         [
             "impute-dir",
-            str(inp_dir),
+            str(test_data_dir),
             str(out_dir),
             "-c",
             "cases",
@@ -372,7 +374,7 @@ def test_impute_dir_suffix(tmp_path):
         f = out_dir / f"test_impute_data_{i}_{suffix}.csv"
         assert f.is_file() is True
 
-    for input, output in zip(inp_dir.iterdir(), out_dir.iterdir()):
+    for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
         df_in = (
             pl.read_csv(input, infer_schema_length=0)
             .with_row_index(name="id")
@@ -406,18 +408,15 @@ def test_impute_dir_suffix(tmp_path):
         )
 
 
-def test_impute_pair(tmp_path):
-    inp_file = Path("./tests/data/test_impute_data.csv")
-    tmp_dir = Path(tmp_path) / "csv-helper"
-    tmp_dir.mkdir()
-    out_file = tmp_dir / "test_impute_pair_output.csv"
+def test_impute_pair(tmp_path, test_data):
+    out_file = tmp_path / "test_impute_pair_output.csv"
     fill_range = (1, 5)
 
     result = runner.invoke(
         app,
         [
             "impute-pair",
-            str(inp_file),
+            str(test_data),
             str(out_file),
             "-c",
             "cases,all_cause",
@@ -433,7 +432,7 @@ def test_impute_pair(tmp_path):
     assert out_file.is_file() is True
 
     df_in = (
-        pl.read_csv(inp_file, infer_schema_length=0)
+        pl.read_csv(test_data, infer_schema_length=0)
         .with_row_index(name="id")
         .select(["id", "cases", "all_cause"])
     )
