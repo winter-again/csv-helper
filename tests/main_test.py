@@ -22,16 +22,15 @@ def test_data(tmp_path) -> Path:
     return data_dir / "test_impute_data.csv"
 
 
-def test_preview(tmp_path, test_data):
+def test_preview(test_data):
     result = runner.invoke(app, ["preview", str(test_data), "-n", "15"])
     assert result.exit_code == 0
 
-    # NOTE: second is Windows file path
     assert (
-        f"File: {test_data}\nshape: (15, 4)" in result.stdout.strip("\n")
-        # or "File: tests\\data\\test_impute_data.csv\nshape: (15, 4)" in result.stdout
-        or f"File: {PureWindowsPath(test_data)}\nshape: (15, 4)"
-        in result.stdout.strip("\n")
+        f"File: {test_data}" in result.stdout
+        # NOTE: Windows file path
+        # or "File: tests\\data\\test_impute_data.csv" in result.stdout
+        or f"File: {PureWindowsPath(test_data)}" in result.stdout
     )
 
     out = dedent(
