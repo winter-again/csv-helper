@@ -85,7 +85,7 @@ def test_check(test_data):
 
     out = dedent(
         """\
-        Found 33 occurrences of '<=5' in 'cases' -> 0.38 of rows (n = 86)
+        Found 187 occurrences of '<=5' in 'cases' -> 0.37 of rows (n = 499)
         shape: (5, 4)
         ┌────────┬──────┬───────┬───────────┐
         │ county ┆ year ┆ cases ┆ all_cause │
@@ -98,7 +98,7 @@ def test_check(test_data):
         │ 01001  ┆ 2020 ┆ <=5   ┆ 100       │
         │ 01003  ┆ 2020 ┆ <=5   ┆ 20        │
         └────────┴──────┴───────┴───────────┘
-        """
+            """
     )
     assert result.stdout == out
 
