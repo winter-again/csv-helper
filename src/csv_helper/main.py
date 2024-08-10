@@ -645,7 +645,6 @@ def impute_pair(
                 if col in df_sep.columns and col != fill_cols_parsed.numerator
             ]
             df = df.join(df_sep, on=join_cols, how="inner", coalesce=True)
-            print(df)
 
         t0 = time.perf_counter()
         df = df.with_columns(
@@ -692,8 +691,6 @@ def impute_pair(
             .cast(cast_type.value)
         )
         t1 = time.perf_counter()
-
-        print(df)
 
         if create_dir:
             output.parent.mkdir(parents=True)

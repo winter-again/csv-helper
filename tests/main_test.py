@@ -548,8 +548,6 @@ def test_impute_pair_sep_files(tmp_path, test_data_sep):
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
     ).collect()
-    print(df_out)
-    print(df)
     assert (
         df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
         is False
