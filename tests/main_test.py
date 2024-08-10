@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path, PureWindowsPath
-from textwrap import dedent
 from sys import platform
+from textwrap import dedent
 
 import polars as pl
 import pytest
@@ -33,6 +33,18 @@ def test_data_dir(tmp_path) -> Path:
     data_dir.mkdir()
     shutil.copytree("./tests/data/test_dir", data_dir / "test_dir")
     return data_dir / "test_dir"
+
+
+@pytest.fixture
+def test_data_sep(tmp_path) -> Path:
+    """
+    Fixture that moves test dir of pair CSV data to new dir for
+    testing and returns the dir's path
+    """
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    shutil.copytree("./tests/data/test_pair_sep", data_dir / "test_pair_sep")
+    return data_dir / "test_pair_sep"
 
 
 def test_preview(test_data):
@@ -134,17 +146,19 @@ def test_impute(tmp_path, test_data):
 
     df_in = (
         pl.read_csv(test_data, infer_schema_length=0)
-        .with_row_index(name="id")
-        .select(["id", "cases"])
+        # .with_row_index(name="id")
+        # .select("id", "cases")
     )
     df_out = (
         pl.read_csv(out_file, infer_schema_length=0)
-        .with_row_index(name="id")
-        .select(["id", "cases"])
+        # .with_row_index(name="id")
+        # .select("id", "cases")
     )
-    df = df_in.join(df_out, on="id", how="inner", suffix="_imputed").filter(
-        pl.col("cases") == f"<={fill_range[1]}"
-    )
+    assert df_in.shape == df_out.shape
+
+    df = df_in.join(
+        df_out, on=["county", "year"], how="inner", suffix="_imputed"
+    ).filter(pl.col("cases") == f"<={fill_range[1]}")
     assert (
         df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
         is False
@@ -246,15 +260,19 @@ def test_impute_dir(tmp_path, test_data_dir):
     for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
         df_in = (
             pl.read_csv(input, infer_schema_length=0)
-            .with_row_index(name="id")
-            .select(["id", "cases", "all_cause"])
+            # .with_row_index(name="id")
+            # .select("id", "cases", "all_cause")
         )
         df_out = (
             pl.read_csv(output, infer_schema_length=0)
-            .with_row_index(name="id")
-            .select(["id", "cases", "all_cause"])
+            # .with_row_index(name="id")
+            # .select("id", "cases", "all_cause")
         )
-        df = df_in.join(df_out, on="id", how="inner", suffix="_imputed").filter(
+        assert df_in.shape == df_out.shape
+
+        df = df_in.join(
+            df_out, on=["county", "year"], how="inner", suffix="_imputed"
+        ).filter(
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
@@ -313,15 +331,19 @@ def test_impute_dir_force(tmp_path, test_data_dir):
     for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
         df_in = (
             pl.read_csv(input, infer_schema_length=0)
-            .with_row_index(name="id")
-            .select(["id", "cases", "all_cause"])
+            # .with_row_index(name="id")
+            # .select("id", "cases", "all_cause")
         )
         df_out = (
             pl.read_csv(output, infer_schema_length=0)
-            .with_row_index(name="id")
-            .select(["id", "cases", "all_cause"])
+            # .with_row_index(name="id")
+            # .select("id", "cases", "all_cause")
         )
-        df = df_in.join(df_out, on="id", how="inner", suffix="_imputed").filter(
+        assert df_in.shape == df_out.shape
+
+        df = df_in.join(
+            df_out, on=["county", "year"], how="inner", suffix="_imputed"
+        ).filter(
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
@@ -377,15 +399,19 @@ def test_impute_dir_suffix(tmp_path, test_data_dir):
     for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
         df_in = (
             pl.read_csv(input, infer_schema_length=0)
-            .with_row_index(name="id")
-            .select(["id", "cases", "all_cause"])
+            # .with_row_index(name="id")
+            # .select("id", "cases", "all_cause")
         )
         df_out = (
             pl.read_csv(output, infer_schema_length=0)
-            .with_row_index(name="id")
-            .select(["id", "cases", "all_cause"])
+            # .with_row_index(name="id")
+            # .select("id", "cases", "all_cause")
         )
-        df = df_in.join(df_out, on="id", how="inner", suffix="_imputed").filter(
+        assert df_in.shape == df_out.shape
+
+        df = df_in.join(
+            df_out, on=["county", "year"], how="inner", suffix="_imputed"
+        ).filter(
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
@@ -433,15 +459,19 @@ def test_impute_pair(tmp_path, test_data):
 
     df_in = (
         pl.read_csv(test_data, infer_schema_length=0)
-        .with_row_index(name="id")
-        .select(["id", "cases", "all_cause"])
+        # .with_row_index(name="id")
+        # .select("id", "cases", "all_cause")
     )
     df_out = (
         pl.read_csv(out_file, infer_schema_length=0)
-        .with_row_index(name="id")
-        .select(["id", "cases", "all_cause"])
+        # .with_row_index(name="id")
+        # .select("id", "cases", "all_cause")
     )
-    df = df_in.join(df_out, on="id", how="inner", suffix="_imputed").filter(
+    assert df_in.shape == df_out.shape
+
+    df = df_in.join(
+        df_out, on=["county", "year"], how="inner", suffix="_imputed"
+    ).filter(
         (pl.col("cases") == f"<={fill_range[1]}")
         | (pl.col("all_cause") == f"<={fill_range[1]}")
     )
@@ -473,6 +503,81 @@ def test_impute_pair(tmp_path, test_data):
     )
     assert (
         df.select(["cases_imputed", "all_cause_imputed"])
+        .cast(pl.Int64)
+        .filter(pl.col("cases_imputed") > pl.col("all_cause_imputed"))
+    ).height == 0
+
+
+def test_impute_pair_sep_files(tmp_path, test_data_sep):
+    num_file = test_data_sep / "test_impute_numerator_only_data.csv"
+    denom_file = test_data_sep / "test_impute_denom_only_data.csv"
+    out_file = tmp_path / "test_impute_sep_files_output.csv"
+    fill_range = (1, 5)
+
+    result = runner.invoke(
+        app,
+        [
+            "impute-pair",
+            str(num_file),
+            str(out_file),
+            "--sep",
+            str(denom_file),
+            "-c",
+            "cases,all_cause",
+            "-f",
+            f"<={fill_range[1]}",
+            "-r",
+            f"{fill_range[0]},{fill_range[1]}",
+            "-s",
+            "8",
+        ],
+    )
+    assert result.exit_code == 0
+    assert out_file.is_file() is True
+
+    # NOTE: use lazyframes to avoid mem issues
+    # also joins by actual cols instead of row_index
+    df_num = pl.scan_csv(num_file, infer_schema_length=0)
+    df_denom = pl.scan_csv(denom_file, infer_schema_length=0)
+    df_out = pl.scan_csv(out_file, infer_schema_length=0)
+    df = (
+        df_num.join(df_denom, on=["county", "year"], how="inner", coalesce=True)
+        .join(df_out, on=["county", "year"], how="inner", suffix="_imputed")
+        .filter(
+            (pl.col("cases") == f"<={fill_range[1]}")
+            | (pl.col("all_cause") == f"<={fill_range[1]}")
+        )
+    ).collect()
+    print(df_out)
+    print(df)
+    assert (
+        df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
+        is False
+    )
+    assert (
+        df.select("all_cause_imputed")
+        .to_series()
+        .str.contains(f"<={fill_range[1]}")
+        .all()
+        is False
+    )
+    assert (
+        df.select("cases", pl.col("cases_imputed").cast(pl.Int64))
+        .filter(
+            (
+                (pl.col("cases") == f"<={fill_range[1]}")
+                & (pl.col("cases_imputed") < fill_range[0])
+            )
+            | (
+                (pl.col("cases") == f"<={fill_range[1]}")
+                & (pl.col("cases_imputed") > fill_range[1])
+            )
+        )
+        .height
+        == 0
+    )
+    assert (
+        df.select("cases_imputed", "all_cause_imputed")
         .cast(pl.Int64)
         .filter(pl.col("cases_imputed") > pl.col("all_cause_imputed"))
     ).height == 0
