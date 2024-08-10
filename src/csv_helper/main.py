@@ -514,6 +514,17 @@ def impute_pair(
             click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
     ] = ColType.INT64.name,
+    sep_file: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--sep",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Path to some separate CSV file in which to look for denominator data. Currently only supports a separate file that has the exact same structure as the input file except for the numerator column being swapped for the denominator column.",
+        ),
+    ] = None,
     seed: Annotated[
         int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
     ] = 123,
@@ -541,6 +552,8 @@ def impute_pair(
     column and a denominator column such that the imputed values of the
     numerator column must not exceed the imputed values of the denominator
     column. Save the resulting data to OUTPUT.
+
+    If --sep is provided, then specified file will be used to find the denominator column given in COLS.
     """
     if output.is_file():
         overwrite_file = Confirm.ask(
@@ -567,6 +580,9 @@ def impute_pair(
 
     df = pl.read_csv(input, infer_schema_length=0)
 
+    if sep_file is not None:
+        df_sep = pl.read_csv(sep_file, infer_schema_length=0)
+
     if input == output and not force:
         err_console.print(
             "Cannot specify output to be identical to input. Use the --force/-F option to force this behavior"
@@ -574,9 +590,18 @@ def impute_pair(
         raise typer.Abort()
 
     fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
-    if not fill_cols_exist(df, list(fill_cols_parsed)):
-        err_console.print("Invalid columns specified for --cols")
-        raise typer.Abort()
+    if sep_file is not None:
+        # TODO: why doesn't this work?
+        # if not fill_cols_exist(df_sep, list(fill_cols_parsed[1])):
+        if fill_cols_parsed[1] not in df_sep.columns:
+            err_console.print(
+                "Separate data file doesn't contain the given denominator column"
+            )
+            raise typer.Abort()
+    else:
+        if not fill_cols_exist(df, list(fill_cols_parsed)):
+            err_console.print("Invalid columns specified for --cols")
+            raise typer.Abort()
 
     fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
 
@@ -585,10 +610,17 @@ def impute_pair(
         err_console.print(f"Invalid range given for --range: {fill_range}")
         raise typer.Abort()
 
-    imp_sizes = (
-        len(df.filter(pl.col(fill_cols_parsed.numerator) == fill_flag)),
-        len(df.filter(pl.col(fill_cols_parsed.denominator) == fill_flag)),
-    )
+    if sep_file is not None:
+        imp_sizes = (
+            len(df.filter(pl.col(fill_cols_parsed.numerator) == fill_flag)),
+            len(df_sep.filter(pl.col(fill_cols_parsed.denominator) == fill_flag)),
+        )
+    else:
+        imp_sizes = (
+            len(df.filter(pl.col(fill_cols_parsed.numerator) == fill_flag)),
+            len(df.filter(pl.col(fill_cols_parsed.denominator) == fill_flag)),
+        )
+
     if imp_sizes[0] == 0 and imp_sizes[1] == 0:
         err_console.print(
             f"Cannot find any instances of {fill_flag} in either {fill_cols_parsed.numerator} or {fill_cols_parsed.denominator}"
@@ -604,6 +636,16 @@ def impute_pair(
 
         rng = np.random.default_rng(seed)
         cast_type = ColType[col_type]
+
+        if sep_file is not None:
+            # TODO: is this correct? currently primitive capabilities
+            join_cols = [
+                col
+                for col in df.columns
+                if col in df_sep.columns and col != fill_cols_parsed.numerator
+            ]
+            df = df.join(df_sep, on=join_cols, how="inner", coalesce=True)
+            print(df)
 
         t0 = time.perf_counter()
         df = df.with_columns(
@@ -650,6 +692,8 @@ def impute_pair(
             .cast(cast_type.value)
         )
         t1 = time.perf_counter()
+
+        print(df)
 
         if create_dir:
             output.parent.mkdir(parents=True)
