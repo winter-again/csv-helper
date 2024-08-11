@@ -121,7 +121,7 @@ def test_check_not_file(tmp_path):
     assert result.exit_code == 2
 
 
-def test_impute(tmp_path, test_data):
+def test_impute_file(tmp_path, test_data):
     out_file = tmp_path / "test_impute_output.csv"
     fill_range = (1, 5)
 
@@ -129,6 +129,7 @@ def test_impute(tmp_path, test_data):
         app,
         [
             "impute",
+            "file",
             str(test_data),
             str(out_file),
             "-c",
@@ -175,7 +176,7 @@ def test_impute(tmp_path, test_data):
     )
 
 
-def test_impute_output_exists(tmp_path, test_data):
+def test_impute_file_output_exists(tmp_path, test_data):
     out_file = tmp_path / "output_that_exists.csv"
     fill_range = (1, 5)
 
@@ -187,6 +188,7 @@ def test_impute_output_exists(tmp_path, test_data):
         app,
         [
             "impute",
+            "file",
             str(test_data),
             str(out_file),
             "-c",
@@ -202,7 +204,7 @@ def test_impute_output_exists(tmp_path, test_data):
     assert result.exit_code == 1
 
 
-def test_impute_overwrite(tmp_path, test_data):
+def test_impute_file_overwrite(tmp_path, test_data):
     out_file = tmp_path / "output_that_exists.csv"
     fill_range = (1, 5)
 
@@ -214,6 +216,7 @@ def test_impute_overwrite(tmp_path, test_data):
         app,
         [
             "impute",
+            "file",
             str(test_data),
             str(out_file),
             "-c",
@@ -238,7 +241,8 @@ def test_impute_dir(tmp_path, test_data_dir):
     result = runner.invoke(
         app,
         [
-            "impute-dir",
+            "impute",
+            "dir",
             str(test_data_dir),
             str(out_dir),
             "-c",
@@ -308,7 +312,8 @@ def test_impute_dir_force(tmp_path, test_data_dir):
     result = runner.invoke(
         app,
         [
-            "impute-dir",
+            "impute",
+            "dir",
             str(test_data_dir),
             str(out_dir),
             "-c",
@@ -375,7 +380,8 @@ def test_impute_dir_suffix(tmp_path, test_data_dir):
     result = runner.invoke(
         app,
         [
-            "impute-dir",
+            "impute",
+            "dir",
             str(test_data_dir),
             str(out_dir),
             "-c",
@@ -441,7 +447,8 @@ def test_impute_pair(tmp_path, test_data):
     result = runner.invoke(
         app,
         [
-            "impute-pair",
+            "impute",
+            "pair",
             str(test_data),
             str(out_file),
             "-c",
@@ -517,7 +524,8 @@ def test_impute_pair_sep_files(tmp_path, test_data_sep):
     result = runner.invoke(
         app,
         [
-            "impute-pair",
+            "impute",
+            "pair",
             str(num_file),
             str(out_file),
             "--sep",
