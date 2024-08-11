@@ -695,6 +695,10 @@ def impute_pair(
         if create_dir:
             output.parent.mkdir(parents=True)
 
+        # TODO: is this enough?
+        if sep_file:
+            df = df.drop(fill_cols_parsed.denominator)
+
         df.write_csv(output)
 
     print("[green]Finished imputing[/green]...")
