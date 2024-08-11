@@ -528,8 +528,6 @@ def test_impute_pair_sep_files(tmp_path, test_data_sep):
             "pair",
             str(num_file),
             str(out_file),
-            "--sep",
-            str(denom_file),
             "-c",
             "cases,all_cause",
             "-f",
@@ -538,6 +536,8 @@ def test_impute_pair_sep_files(tmp_path, test_data_sep):
             f"{fill_range[0]},{fill_range[1]}",
             "-s",
             "8",
+            "--sep-denom",
+            str(denom_file),
         ],
     )
     assert result.exit_code == 0
