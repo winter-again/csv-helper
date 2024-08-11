@@ -139,7 +139,6 @@ def impute_file(
             dir_okay=False,
             readable=True,
             help="Path to target CSV file",
-            # callback=output_callback,
         ),
     ],
     output: Annotated[
@@ -199,7 +198,6 @@ def impute_file(
             "--verbose",
             "-v",
             help="Whether to show additional imputation summary information",
-            # callback=output_callback,
         ),
     ] = False,
 ) -> None:
