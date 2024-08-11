@@ -34,7 +34,11 @@ class ColType(Enum):
     FLOAT64 = pl.Float64
 
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True, help="A CLI for working with CSV data")
+# NOTE: embed subcommand
+impute_app = typer.Typer(no_args_is_help=True, help="Impute CSV data")
+app.add_typer(impute_app, name="impute")
+
 err_console = Console(stderr=True)
 
 
@@ -83,7 +87,11 @@ def preview(
     """
     print(f"File: {input}")
     df = pl.read_csv(input, infer_schema_length=0)
-    print(df.head(n_rows))
+
+    if n_rows > df.height:
+        print(df)
+    else:
+        print(df.head(n_rows))
 
 
 @app.command()
@@ -121,8 +129,8 @@ def check(
     print(df.filter(pl.col(fill_col) == fill_flag).head())
 
 
-@app.command()
-def impute(
+@impute_app.command("file")
+def impute_file(
     input: Annotated[
         Path,
         typer.Argument(
@@ -130,7 +138,8 @@ def impute(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="The CSV file to impute",
+            help="Path to target CSV file",
+            # callback=output_callback,
         ),
     ],
     output: Annotated[
@@ -142,7 +151,7 @@ def impute(
             dir_okay=False,
             writable=True,
             readable=False,
-            help="Path to save the output CSV",
+            help="Path to save the output CSV file",
         ),
     ],
     fill_col: Annotated[
@@ -190,6 +199,7 @@ def impute(
             "--verbose",
             "-v",
             help="Whether to show additional imputation summary information",
+            # callback=output_callback,
         ),
     ] = False,
 ) -> None:
@@ -281,7 +291,7 @@ def impute(
         print(df.filter(pl.col(fill_col) <= fill_range_int.ub).head())
 
 
-@app.command("impute-dir")
+@impute_app.command("dir")
 def impute_dir(
     input_dir: Annotated[
         Path,
@@ -462,7 +472,7 @@ def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -
     return val
 
 
-@app.command("impute-pair")
+@impute_app.command("pair")
 def impute_pair(
     input: Annotated[
         Path,
