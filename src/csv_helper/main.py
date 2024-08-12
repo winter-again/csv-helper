@@ -50,21 +50,23 @@ def fill_cols_exist(df: pl.DataFrame, fill_cols: list[str]) -> bool:
     return True
 
 
-def parse_validate_fill_range(fill_range: str) -> Optional[FillRange]:
+def parse_fill_range(fill_range: str) -> FillRange:
     fill_range_parsed = tuple(x.strip() for x in fill_range.split(",", maxsplit=1))
     if not fill_range_parsed[0].isdigit() or not fill_range_parsed[1].isdigit():
-        return None
+        err_console.print(f"Invalid range given for --range: {fill_range}")
+        raise typer.Abort()
+
     fill_range_int = FillRange(int(fill_range_parsed[0]), int(fill_range_parsed[1]))
     if fill_range_int.lb > fill_range_int.ub:
-        return None
+        err_console.print(f"Invalid range given for --range: {fill_range}")
+        raise typer.Abort()
     return fill_range_int
 
 
 def fill_flag_exists(df: pl.DataFrame, fill_col: str, fill_flag: str) -> bool:
-    imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
-    if imp_size == 0:
-        return False
-    return True
+    if df.select((pl.col(fill_col) == fill_flag).any()).item():
+        return True
+    return False
 
 
 @app.command()
@@ -243,14 +245,11 @@ def impute_file(
 
     df = pl.read_csv(input, infer_schema_length=0)
 
-    if not fill_cols_exist(df, [fill_col]):
+    if fill_col not in df.columns:
         err_console.print(f"Column {fill_col} cannot be found in {input}")
         raise typer.Abort()
 
-    fill_range_int = parse_validate_fill_range(fill_range)
-    if fill_range_int is None:
-        err_console.print(f"Invalid range given for --range: {fill_range}")
-        raise typer.Abort()
+    fill_range_int = parse_fill_range(fill_range)
 
     if not fill_flag_exists(df, fill_col, fill_flag):
         err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
@@ -461,7 +460,7 @@ def impute_pair(
 
     fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
 
-    fill_range_int = parse_validate_fill_range(fill_range)
+    fill_range_int = parse_fill_range(fill_range)
     if fill_range_int is None:
         err_console.print(f"Invalid range given for --range: {fill_range}")
         raise typer.Abort()
@@ -714,7 +713,7 @@ def impute_dir(
             err_console.print(f"Column {fill_col} cannot be found in {file}")
             raise typer.Abort()
 
-        fill_range_int = parse_validate_fill_range(fill_range)
+        fill_range_int = parse_fill_range(fill_range)
         if fill_range_int is None:
             err_console.print(f"Invalid range given for --range: {fill_range}")
             raise typer.Abort()
