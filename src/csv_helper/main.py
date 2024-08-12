@@ -153,7 +153,7 @@ def check_create_dir(output: Path) -> bool:
     return False
 
 
-def fill_cols_exist(df: pl.DataFrame, fill_cols: list[str]) -> bool:
+def all_cols_exist(df: pl.DataFrame, fill_cols: list[str]) -> bool:
     for col in fill_cols:
         if col not in df.columns:
             return False
@@ -222,6 +222,7 @@ def impute_file(
         typer.Option(
             "--range",
             "-r",
+            metavar="TEXT",
             help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
             parser=parse_fill_range,
         ),
@@ -343,13 +344,6 @@ def parse_sep_cols(sep_cols: str) -> list[str]:
     return [col.strip() for col in sep_cols.split(",")]
 
 
-# TODO: is this better than just doing the check inside of the command's func?
-def sep_denom_callback(ctx: typer.Context, param: typer.CallbackParam, sep_out: Path):
-    if "sep_denom" not in ctx.params:
-        raise typer.BadParameter("--sep-denom must also be set")
-    return sep_out
-
-
 @impute_app.command("pair")
 def impute_pair(
     input: Annotated[
@@ -378,6 +372,7 @@ def impute_pair(
         typer.Option(
             "--cols",
             "-c",
+            metavar="TEXT",
             help="Pair of columns (numerator and denominator) to be imputed. Specify as comma-separated values. For example, 'count_col,denom_col' specifies 'count_col' as the numerator and 'denom_col' as the denominator.",
             parser=parse_fill_cols,
         ),
@@ -393,6 +388,7 @@ def impute_pair(
         typer.Option(
             "--range",
             "-r",
+            metavar="TEXT",
             help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
             parser=parse_fill_range,
         ),
@@ -423,9 +419,9 @@ def impute_pair(
             "--force",
             "-F",
             help="""
-            Allow overwriting data even if (1) the specified output file already exists or
-            (2) the path to the input file is identical to the path of the output file. Both
-            checks will be ignored.
+            Allow overwriting data even if (1) the specified output file already exists,
+            (2) the path to the input file is identical to the path of the output file, or
+            (3) --sep-out is specfied and that file already exists. All checks will be ignored.
             """,
         ),
     ] = False,
@@ -446,18 +442,14 @@ def impute_pair(
             """,
         ),
     ] = None,
-    # TODO: make this req?
     sep_cols: Annotated[
-        Optional[list],
+        Optional[list[str]],
         typer.Option(
             "--sep-cols",
             help="Comma-separated list of column names on which to join the numerator and denominator data",
             parser=parse_sep_cols,
-            callback=sep_denom_callback,
         ),
     ] = None,
-    # TODO: should have single callback here that checks that --sep-denom given
-    # and if so, then all 3 of these --sep... commands should be present?
     sep_out: Annotated[
         Optional[Path],
         typer.Option(
@@ -468,7 +460,6 @@ def impute_pair(
             writable=True,
             readable=False,
             help="Path to save imputed denominator data from --sep-denom",
-            callback=sep_denom_callback,
         ),
     ] = None,
 ):
@@ -480,49 +471,73 @@ def impute_pair(
     the imputed values of the numerator column must not exceed the imputed
     values of the denominator column.
 
+    Separate denominator data:
+
     If --sep-denom is provided, then that file will be used instead to source
-    the denominator column. You can then (optionally) use --sep-out to specify
-    where to save the imputed version of the denominator data from --sep-denom.
+    the denominator column. You must then also use --sep-cols to specify the
+    columns to use for joining the numerator and denominator data. Optionally,
+    use --sep-out to specify where to save the imputed version of the denominator
+    data from --sep-denom.
     """
     validate_inp_out(input, output, force)
     create_dir = check_create_dir(output)
 
+    # TODO: check overwriting --sep-out?
+
+    # TODO: this might be simpler than the callbacks
+    if (sep_cols is not None or sep_out is not None) and sep_denom is None:
+        err_console.print("Must specify --sep-denom to use --sep-cols or --sep-out")
+        raise typer.Abort()
+
     df = pl.read_csv(input, infer_schema_length=0)
 
     if sep_denom is not None:
-        df_sep = pl.read_csv(sep_denom, infer_schema_length=0)
-
-    print(sep_cols)
-    print(type(sep_cols))
-
-    # TODO: can we replace this w/ same parser start as fill range?
-    # fill_cols_parsed = tuple(x.strip() for x in fill_cols.split(",", maxsplit=1))
-    if sep_denom is not None:
-        # TODO: why doesn't this work?
-        # if not fill_cols_exist(df_sep, list(fill_cols_parsed[1])):
-        if fill_cols.denominator not in df_sep.columns:
-            err_console.print(
-                "Separate data file doesn't contain the given denominator column"
-            )
+        if sep_cols is None:
+            err_console.print("You must specify both --sep-denom and --sep-cols")
             raise typer.Abort()
-    else:
-        if not fill_cols_exist(df, list(fill_cols)):
+
+        # NOTE: extract since it gives nested list; maybe some type coercion going on
+        sep_cols = sep_cols[0]
+        df_denom = pl.read_csv(sep_denom, infer_schema_length=0)
+
+        if (
+            fill_cols.numerator not in df.columns
+            or fill_cols.denominator not in df_denom.columns
+        ):
             err_console.print("Invalid columns specified for --cols")
             raise typer.Abort()
 
-    # fill_cols_parsed = FillCols(fill_cols_parsed[0], fill_cols_parsed[1])
+        if not all_cols_exist(df, sep_cols) or not all_cols_exist(df_denom, sep_cols):
+            err_console.print(
+                "Some of the --sep-cols are missing from the numerator or denominator data"
+            )
+            raise typer.Abort()
 
-    # fill_range_int = parse_fill_range(fill_range)
-    # if fill_range_int is None:
-    #     err_console.print(f"Invalid range given for --range: {fill_range}")
-    #     raise typer.Abort()
+        # TODO: might need more sophisticated checks here to ensure the join goes ok or fails gracefully
+        if fill_cols.denominator not in df_denom.columns:
+            err_console.print(
+                "Separate denominator data doesn't contain the given denominator column"
+            )
+            raise typer.Abort()
 
-    if sep_denom is not None:
+        if sep_out is not None:
+            if sep_out.is_file() and not force:
+                overwrite_out = Confirm.ask(
+                    f"[blue bold]{sep_out}[/blue bold] already exists. Do you want to overwrite it?"
+                )
+                if not overwrite_out:
+                    print("Won't overwrite")
+                    raise typer.Abort()
+
         imp_sizes = (
             len(df.filter(pl.col(fill_cols.numerator) == fill_flag)),
-            len(df_sep.filter(pl.col(fill_cols.denominator) == fill_flag)),
+            len(df_denom.filter(pl.col(fill_cols.denominator) == fill_flag)),
         )
     else:
+        if not all_cols_exist(df, list(fill_cols)):
+            err_console.print("Invalid columns specified for --cols")
+            raise typer.Abort()
+
         imp_sizes = (
             len(df.filter(pl.col(fill_cols.numerator) == fill_flag)),
             len(df.filter(pl.col(fill_cols.denominator) == fill_flag)),
@@ -545,13 +560,8 @@ def impute_pair(
         cast_type = ColType[col_type]
 
         if sep_denom is not None:
-            # TODO: is this correct? currently primitive capabilities
-            join_cols = [
-                col
-                for col in df.columns
-                if col in df_sep.columns and col != fill_cols.numerator
-            ]
-            df = df.join(df_sep, on=join_cols, how="inner", coalesce=True)
+            # TODO: any checks here to ensure struc is what expect? i.e., no duplicated cols
+            df = df.join(df_denom, on=sep_cols, how="inner", coalesce=True)
 
         t0 = time.perf_counter()
         df = df.with_columns(
@@ -591,20 +601,19 @@ def impute_pair(
         )
         t1 = time.perf_counter()
 
+        # TODO: consider create_dir also for sep_out?
         if create_dir:
             output.parent.mkdir(parents=True)
 
-        # TODO: consider create_dir also for sep_out?
-        # is this all we have to do?
+        # TODO: instead of *sep_cols, might need to make fewer assumptions
+        # specify via negation?
         if sep_denom is not None:
             if sep_out is not None:
-                # TODO: need to create this?
-                df_sep_out = df.select(*join_cols, fill_cols.denominator)
-                df_sep_out.write_csv(sep_out)
+                df.select(pl.col("*").exclude(fill_cols.numerator)).write_csv(sep_out)
 
-            df = df.drop(fill_cols.denominator)
-
-        df.write_csv(output)
+            df.select(pl.col("*").exclude(fill_cols.denominator)).write_csv(output)
+        else:
+            df.write_csv(output)
 
     print("[green]Finished imputing[/green]...")
 
@@ -632,13 +641,12 @@ def impute_pair(
         table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
         print(table)
 
-        # TODO: fix this to be for both dfs
-        # print(
-        #     df.filter(
-        #         (pl.col(fill_cols.numerator) <= fill_range_int.ub)
-        #         | (pl.col(fill_cols.denominator) <= fill_range_int.ub)
-        #     ).head()
-        # )
+        print(
+            df.filter(
+                (pl.col(fill_cols.numerator) <= fill_range.ub)
+                | (pl.col(fill_cols.denominator) <= fill_range.ub)
+            ).head()
+        )
 
 
 @impute_app.command("dir")
@@ -679,6 +687,7 @@ def impute_dir(
         typer.Option(
             "--range",
             "-r",
+            metavar="TEXT",
             help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
             parser=parse_fill_range,
         ),
@@ -754,14 +763,9 @@ def impute_dir(
 
         df = pl.read_csv(file, infer_schema_length=0)
 
-        if not fill_cols_exist(df, [fill_col]):
+        if not all_cols_exist(df, [fill_col]):
             err_console.print(f"Column {fill_col} cannot be found in {file}")
             raise typer.Abort()
-
-        # fill_range_int = parse_fill_range(fill_range)
-        # if fill_range_int is None:
-        #     err_console.print(f"Invalid range given for --range: {fill_range}")
-        #     raise typer.Abort()
 
         if verbose:
             imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
