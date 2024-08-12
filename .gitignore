@@ -4,3 +4,4 @@ __pycache__/
 .pdm-python
 dist/
 sdist/
+test.py
