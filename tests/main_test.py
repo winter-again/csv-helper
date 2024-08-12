@@ -161,7 +161,7 @@ def test_impute_file(tmp_path, test_data):
         df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
     ).filter(pl.col("cases") == f"<={fill_range[1]}")
     assert (
-        df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").any()
+        df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
         is False
     )
     assert (
@@ -278,10 +278,7 @@ def test_impute_dir(tmp_path, test_data_dir):
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
         assert (
-            df.select("cases_imputed")
-            .to_series()
-            .str.contains(f"<={fill_range[1]}")
-            .any()
+            df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
             is False
         )
         assert (
@@ -349,10 +346,7 @@ def test_impute_dir_force(tmp_path, test_data_dir):
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
         assert (
-            df.select("cases_imputed")
-            .to_series()
-            .str.contains(f"<={fill_range[1]}")
-            .any()
+            df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
             is False
         )
         assert (
@@ -418,10 +412,7 @@ def test_impute_dir_suffix(tmp_path, test_data_dir):
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
         assert (
-            df.select("cases_imputed")
-            .to_series()
-            .str.contains(f"<={fill_range[1]}")
-            .any()
+            df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
             is False
         )
         assert (
@@ -478,20 +469,26 @@ def test_impute_pair(tmp_path, test_data):
         | (pl.col("all_cause") == f"<={fill_range[1]}")
     )
     assert (
-        df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").any()
+        df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
         is False
     )
     assert (
-        df.select("all_cause_imputed")
-        .to_series()
-        .str.contains(f"<={fill_range[1]}")
-        .any()
+        df.select((pl.col("all_cause_imputed") == f"<={fill_range[1]}").any()).item()
         is False
     )
     assert (
         df.select(pl.col("cases"), pl.col("cases_imputed").cast(pl.Int64))
         .filter(pl.col("cases") == f"<={fill_range[1]}")
         .select(pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all())
+        .item()
+        is True
+    )
+    assert (
+        df.select("all_cause", pl.col("all_cause_imputed").cast(pl.Int64))
+        .filter(pl.col("all_cause") == f"<={fill_range[1]}")
+        .select(
+            pl.col("all_cause_imputed").is_between(fill_range[0], fill_range[1]).all()
+        )
         .item()
         is True
     )
@@ -543,7 +540,7 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
     ).filter(pl.col("cases") == f"<={fill_range[1]}")
 
     assert (
-        df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
+        df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
         is False
     )
     assert (
@@ -609,19 +606,25 @@ def test_impute_pair_sep_output(tmp_path, test_data_sep):
     )
     print(df)
     assert (
-        df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
+        df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
         is False
     )
     assert (
-        df.select("all_cause_imputed")
-        .to_series()
-        .str.contains(f"<={fill_range[1]}")
-        .all()
+        df.select((pl.col("all_cause_imputed") == f"<={fill_range[1]}").any()).item()
         is False
     )
     assert (
         df.select("cases", pl.col("cases_imputed").cast(pl.Int64))
         .select(pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all())
+        .item()
+        is True
+    )
+    assert (
+        df.select("all_cause", pl.col("all_cause_imputed").cast(pl.Int64))
+        .filter(pl.col("all_cause") == f"<={fill_range[1]}")
+        .select(
+            pl.col("all_cause_imputed").is_between(fill_range[0], fill_range[1]).all()
+        )
         .item()
         is True
     )
