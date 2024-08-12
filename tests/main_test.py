@@ -63,23 +63,23 @@ def test_preview(test_data):
     out = dedent(
         """\
         shape: (15, 4)
-        ┌────────┬──────┬───────┬───────────┐
-        │ county ┆ year ┆ cases ┆ all_cause │
-        │ ---    ┆ ---  ┆ ---   ┆ ---       │
-        │ str    ┆ str  ┆ str   ┆ str       │
-        ╞════════╪══════╪═══════╪═══════════╡
-        │ 01001  ┆ 2016 ┆ 8     ┆ 20        │
-        │ 01002  ┆ 2018 ┆ 10    ┆ 15        │
-        │ 01003  ┆ 2018 ┆ <=5   ┆ <=5       │
-        │ 01005  ┆ 2019 ┆ 7     ┆ 8         │
-        │ 01001  ┆ 2019 ┆ 6     ┆ 10        │
-        │ …      ┆ …    ┆ …     ┆ …         │
-        │ 01003  ┆ 2020 ┆ <=5   ┆ 20        │
-        │ 01295  ┆ 2021 ┆ 10    ┆ 13        │
-        │ 36081  ┆ 2022 ┆ 11    ┆ 15        │
-        │ 01003  ┆ 2020 ┆ <=5   ┆ <=5       │
-        │ 01295  ┆ 2021 ┆ 10    ┆ 12        │
-        └────────┴──────┴───────┴───────────┘
+        ┌────────┬───────────┬───────┬───────────┐
+        │ county ┆ year_week ┆ cases ┆ all_cause │
+        │ ---    ┆ ---       ┆ ---   ┆ ---       │
+        │ str    ┆ str       ┆ str   ┆ str       │
+        ╞════════╪═══════════╪═══════╪═══════════╡
+        │ 55107  ┆ 2020-05   ┆ <=5   ┆ 334       │
+        │ 28101  ┆ 2021-20   ┆ <=5   ┆ <=5       │
+        │ 26099  ┆ 2023-34   ┆ 11    ┆ 31416     │
+        │ 35043  ┆ 2022-24   ┆ <=5   ┆ 5862      │
+        │ 28077  ┆ 2022-41   ┆ 8     ┆ 703       │
+        │ …      ┆ …         ┆ …     ┆ …         │
+        │ 26093  ┆ 2020-42   ┆ <=5   ┆ 7606      │
+        │ 17197  ┆ 2017-20   ┆ <=5   ┆ 25940     │
+        │ 47167  ┆ 2021-19   ┆ <=5   ┆ <=5       │
+        │ 27091  ┆ 2019-12   ┆ 8     ┆ 469       │
+        │ 51085  ┆ 2018-09   ┆ 26    ┆ 2348      │
+        └────────┴───────────┴───────┴───────────┘
         """
     )
     assert out in result.stdout
@@ -97,19 +97,19 @@ def test_check(test_data):
 
     out = dedent(
         """\
-        Found 187 occurrences of '<=5' in 'cases' -> 0.37 of rows (n = 499)
+        Found 308 occurrences of '<=5' in 'cases' -> 0.62 of rows (n = 500)
         shape: (5, 4)
-        ┌────────┬──────┬───────┬───────────┐
-        │ county ┆ year ┆ cases ┆ all_cause │
-        │ ---    ┆ ---  ┆ ---   ┆ ---       │
-        │ str    ┆ str  ┆ str   ┆ str       │
-        ╞════════╪══════╪═══════╪═══════════╡
-        │ 01003  ┆ 2018 ┆ <=5   ┆ <=5       │
-        │ 01001  ┆ 2020 ┆ <=5   ┆ <=5       │
-        │ 01003  ┆ 2020 ┆ <=5   ┆ <=5       │
-        │ 01001  ┆ 2020 ┆ <=5   ┆ 100       │
-        │ 01003  ┆ 2020 ┆ <=5   ┆ 20        │
-        └────────┴──────┴───────┴───────────┘
+        ┌────────┬───────────┬───────┬───────────┐
+        │ county ┆ year_week ┆ cases ┆ all_cause │
+        │ ---    ┆ ---       ┆ ---   ┆ ---       │
+        │ str    ┆ str       ┆ str   ┆ str       │
+        ╞════════╪═══════════╪═══════╪═══════════╡
+        │ 55107  ┆ 2020-05   ┆ <=5   ┆ 334       │
+        │ 28101  ┆ 2021-20   ┆ <=5   ┆ <=5       │
+        │ 35043  ┆ 2022-24   ┆ <=5   ┆ 5862      │
+        │ 28043  ┆ 2023-09   ┆ <=5   ┆ 811       │
+        │ 26093  ┆ 2020-42   ┆ <=5   ┆ 7606      │
+        └────────┴───────────┴───────┴───────────┘
         """
     )
     assert result.stdout == out
@@ -158,7 +158,7 @@ def test_impute_file(tmp_path, test_data):
     assert df_in.shape == df_out.shape
 
     df = df_in.join(
-        df_out, on=["county", "year"], how="inner", suffix="_imputed"
+        df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
     ).filter(pl.col("cases") == f"<={fill_range[1]}")
     assert (
         df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
@@ -275,7 +275,7 @@ def test_impute_dir(tmp_path, test_data_dir):
         assert df_in.shape == df_out.shape
 
         df = df_in.join(
-            df_out, on=["county", "year"], how="inner", suffix="_imputed"
+            df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
         ).filter(
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
@@ -347,7 +347,7 @@ def test_impute_dir_force(tmp_path, test_data_dir):
         assert df_in.shape == df_out.shape
 
         df = df_in.join(
-            df_out, on=["county", "year"], how="inner", suffix="_imputed"
+            df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
         ).filter(
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
@@ -416,7 +416,7 @@ def test_impute_dir_suffix(tmp_path, test_data_dir):
         assert df_in.shape == df_out.shape
 
         df = df_in.join(
-            df_out, on=["county", "year"], how="inner", suffix="_imputed"
+            df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
         ).filter(
             (pl.col("cases") == f"<={fill_range[1]}")
             | (pl.col("all_cause") == f"<={fill_range[1]}")
@@ -477,7 +477,7 @@ def test_impute_pair(tmp_path, test_data):
     assert df_in.shape == df_out.shape
 
     df = df_in.join(
-        df_out, on=["county", "year"], how="inner", suffix="_imputed"
+        df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
     ).filter(
         (pl.col("cases") == f"<={fill_range[1]}")
         | (pl.col("all_cause") == f"<={fill_range[1]}")
@@ -508,6 +508,9 @@ def test_impute_pair(tmp_path, test_data):
         .height
         == 0
     )
+    # TODO: replace with .any()-style check:
+    # return data.lazyframe.select(pl.len()).collect().item() == 3_143
+    # df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
     assert (
         df.select(["cases_imputed", "all_cause_imputed"])
         .cast(pl.Int64)
@@ -515,10 +518,11 @@ def test_impute_pair(tmp_path, test_data):
     ).height == 0
 
 
-def test_impute_pair_sep_files(tmp_path, test_data_sep):
+def test_impute_pair_sep(tmp_path, test_data_sep):
     num_file = test_data_sep / "test_impute_numerator_only_data.csv"
+    out_file = tmp_path / "numerator_output.csv"
     denom_file = test_data_sep / "test_impute_denom_only_data.csv"
-    out_file = tmp_path / "test_impute_sep_files_output.csv"
+    sep_cols = "county,year_week"
     fill_range = (1, 5)
 
     result = runner.invoke(
@@ -538,52 +542,107 @@ def test_impute_pair_sep_files(tmp_path, test_data_sep):
             "8",
             "--sep-denom",
             str(denom_file),
+            "--sep-cols",
+            sep_cols,
         ],
     )
     assert result.exit_code == 0
     assert out_file.is_file() is True
 
-    # NOTE: use lazyframes to avoid mem issues
-    # also joins by actual cols instead of row_index
-    df_num = pl.scan_csv(num_file, infer_schema_length=0)
-    df_denom = pl.scan_csv(denom_file, infer_schema_length=0)
-    df_out = pl.scan_csv(out_file, infer_schema_length=0)
-    df = (
-        df_num.join(df_denom, on=["county", "year"], how="inner", coalesce=True)
-        .join(df_out, on=["county", "year"], how="inner", suffix="_imputed")
-        .filter(
-            (pl.col("cases") == f"<={fill_range[1]}")
-            | (pl.col("all_cause") == f"<={fill_range[1]}")
-        )
-    ).collect()
+    df_num = pl.read_csv(num_file, infer_schema_length=0)
+    df_out = pl.read_csv(out_file, infer_schema_length=0)
+    assert df_num.height == df_out.height
+
+    # NOTE: can't test if all imputed cases <= all-cause since we don't save imputed all-cause in this case
+    df = df_num.join(
+        df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
+    ).filter(pl.col("cases") == f"<={fill_range[1]}")
+
     assert (
         df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
         is False
     )
-    # assert (
-    #     df.select("all_cause_imputed")
-    #     .to_series()
-    #     .str.contains(f"<={fill_range[1]}")
-    #     .all()
-    #     is False
-    # )
+    assert (
+        df.select(pl.col("cases_imputed").cast(pl.Int64))
+        .select(pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all())
+        .item()
+        is True
+    )
+
+
+def test_impute_pair_sep_output(tmp_path, test_data_sep):
+    num_file = test_data_sep / "test_impute_numerator_only_data.csv"
+    out_file = tmp_path / "test_impute_sep_files_numerator_output.csv"
+    denom_file = test_data_sep / "test_impute_denom_only_data.csv"
+    sep_cols = "county,year_week"
+    sep_out = tmp_path / "test_impute_sep_files_denom_output.csv"
+    fill_range = (1, 5)
+
+    result = runner.invoke(
+        app,
+        [
+            "impute",
+            "pair",
+            str(num_file),
+            str(out_file),
+            "-c",
+            "cases,all_cause",
+            "-f",
+            f"<={fill_range[1]}",
+            "-r",
+            f"{fill_range[0]},{fill_range[1]}",
+            "-s",
+            "8",
+            "--sep-denom",
+            str(denom_file),
+            "--sep-cols",
+            sep_cols,
+            "--sep-out",
+            str(sep_out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert out_file.is_file() is True
+
+    df_num = pl.read_csv(num_file, infer_schema_length=0)
+    df_denom = pl.read_csv(denom_file, infer_schema_length=0)
+    assert df_num.height == df_denom.height
+
+    df_out = pl.read_csv(out_file, infer_schema_length=0)
+    assert df_num.height == df_out.height
+
+    df_sep_out = pl.read_csv(sep_out, infer_schema_length=0)
+    assert df_denom.height == df_sep_out.height
+
+    df = (
+        df_num.join(df_denom, on=["county", "year_week"], how="inner", coalesce=True)
+        .join(df_out, on=["county", "year_week"], how="inner", suffix="_imputed")
+        .join(df_sep_out, on=["county", "year_week"], how="inner", suffix="_imputed")
+        .filter(
+            (pl.col("cases") == f"<={fill_range[1]}")
+            | (pl.col("all_cause") == f"<={fill_range[1]}")
+        )
+    )
+    print(df)
+    assert (
+        df.select("cases_imputed").to_series().str.contains(f"<={fill_range[1]}").all()
+        is False
+    )
+    assert (
+        df.select("all_cause_imputed")
+        .to_series()
+        .str.contains(f"<={fill_range[1]}")
+        .all()
+        is False
+    )
     assert (
         df.select("cases", pl.col("cases_imputed").cast(pl.Int64))
-        .filter(
-            (
-                (pl.col("cases") == f"<={fill_range[1]}")
-                & (pl.col("cases_imputed") < fill_range[0])
-            )
-            | (
-                (pl.col("cases") == f"<={fill_range[1]}")
-                & (pl.col("cases_imputed") > fill_range[1])
-            )
-        )
-        .height
-        == 0
+        .select(pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all())
+        .item()
+        is True
     )
-    # assert (
-    #     df.select("cases_imputed", "all_cause_imputed")
-    #     .cast(pl.Int64)
-    #     .filter(pl.col("cases_imputed") > pl.col("all_cause_imputed"))
-    # ).height == 0
+    assert (
+        df.select("cases_imputed", "all_cause_imputed")
+        .cast(pl.Int64)
+        .select((pl.col("cases_imputed") > pl.col("all_cause_imputed")).any())
+    ).item() is False
