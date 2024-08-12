@@ -535,7 +535,7 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
 
     df_num = pl.read_csv(num_file, infer_schema_length=0)
     df_out = pl.read_csv(out_file, infer_schema_length=0)
-    assert df_num.height == df_out.height
+    assert df_num.shape == df_out.shape
 
     # NOTE: can't test if all imputed cases <= all-cause since we don't save imputed all-cause in this case
     df = df_num.join(
@@ -590,13 +590,13 @@ def test_impute_pair_sep_output(tmp_path, test_data_sep):
 
     df_num = pl.read_csv(num_file, infer_schema_length=0)
     df_denom = pl.read_csv(denom_file, infer_schema_length=0)
-    assert df_num.height == df_denom.height
+    assert df_num.shape == df_denom.shape
 
     df_out = pl.read_csv(out_file, infer_schema_length=0)
-    assert df_num.height == df_out.height
+    assert df_num.shape == df_out.shape
 
     df_sep_out = pl.read_csv(sep_out, infer_schema_length=0)
-    assert df_denom.height == df_sep_out.height
+    assert df_denom.shape == df_sep_out.shape
 
     df = (
         df_num.join(df_denom, on=["county", "year_week"], how="inner", coalesce=True)
