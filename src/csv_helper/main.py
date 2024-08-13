@@ -474,16 +474,14 @@ def impute_pair(
 
     If --sep-denom is provided, then that file will be used instead to source
     the denominator column. You must then also use --sep-cols to specify the
-    columns to use for joining the numerator and denominator data. Optionally,
-    use --sep-out to specify where to save the imputed version of the denominator
-    data from --sep-denom.
+    columns to use for (inner) joining the numerator and denominator data. Note
+    that a 1:1 relationship in the join is enforced. Optionally, use --sep-out
+    to specify where to save the imputed version of the denominator data from
+    --sep-denom.
     """
     validate_inp_out(input, output, force)
     create_dir = check_create_dir(output)
 
-    # TODO: check overwriting --sep-out?
-
-    # TODO: this might be simpler than the callbacks
     if (sep_cols is not None or sep_out is not None) and sep_denom is None:
         err_console.print("Must specify --sep-denom to use --sep-cols or --sep-out")
         raise typer.Abort()
@@ -559,8 +557,16 @@ def impute_pair(
         cast_type = ColType[col_type]
 
         if sep_denom is not None:
-            # TODO: any checks here to ensure struc is what expect? i.e., no duplicated cols
-            df = df.join(df_denom, on=sep_cols, how="inner", coalesce=True)
+            # NOTE: `validate` default is "m:m" -> forcing a 1:1 relationship of the join
+            try:
+                df = df.join(
+                    df_denom, on=sep_cols, how="inner", coalesce=True, validate="1:1"
+                )
+            except pl.exceptions.ComputeError:
+                err_console.print(
+                    "The join with --sep-denom failed because there is not a 1:1 relationship between the join keys."
+                )
+                raise typer.Abort()
 
         t0 = time.perf_counter()
         df = df.with_columns(
