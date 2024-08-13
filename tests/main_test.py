@@ -8,6 +8,8 @@ import pytest
 from csv_helper.main import app
 from typer.testing import CliRunner
 
+from importlib.metadata import version
+
 runner = CliRunner()
 
 
@@ -50,6 +52,12 @@ def test_data_sep(tmp_path) -> Path:
 # NOTE: can also access funcs in csv_helper.main directly:
 # from csv_helper.main import preview
 # preview("./tests/data/test_impute_data.csv", 10)
+
+
+def test_show_version():
+    result = runner.invoke(app, ["--version"])
+    ver = version("csv_helper")
+    assert result.stdout.replace("\n", "") == f"csv-helper version {ver}"
 
 
 def test_preview(test_data):
