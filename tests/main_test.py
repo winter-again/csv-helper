@@ -556,6 +556,37 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
     )
 
 
+def test_impute_pair_join_fails(tmp_path, test_data_sep):
+    num_file = test_data_sep / "test_impute_numerator_only_data.csv"
+    out_file = tmp_path / "numerator_output.csv"
+    denom_file = test_data_sep / "test_impute_denom_only_join_fails.csv"
+    sep_cols = "county,year_week"
+    fill_range = (1, 5)
+
+    result = runner.invoke(
+        app,
+        [
+            "impute",
+            "pair",
+            str(num_file),
+            str(out_file),
+            "-c",
+            "cases,all_cause",
+            "-f",
+            f"<={fill_range[1]}",
+            "-r",
+            f"{fill_range[0]},{fill_range[1]}",
+            "-s",
+            "8",
+            "--sep-denom",
+            str(denom_file),
+            "--sep-cols",
+            sep_cols,
+        ],
+    )
+    assert result.exit_code == 1
+
+
 def test_impute_pair_sep_output(tmp_path, test_data_sep):
     num_file = test_data_sep / "test_impute_numerator_only_data.csv"
     out_file = tmp_path / "test_impute_sep_files_numerator_output.csv"
