@@ -1,6 +1,6 @@
 [project]
 name = "csv-helper"
-dynamic = ["version"]
+version = "0.1.0"
 description = "A simple CLI for imputing masked counts in CSV data"
 authors = [
     {name = "Andrew Tiu", email = "andrew.tiu88@gmail.com"},
@@ -24,7 +24,6 @@ build-backend = "pdm.backend"
 
 [tool.pdm]
 distribution = true
-version = { source = "file", path = "src/csv_helper/__version__.py"}
 
 [tool.pdm.dev-dependencies]
 test = [
