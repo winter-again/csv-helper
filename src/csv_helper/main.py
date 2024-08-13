@@ -1,8 +1,8 @@
 import time
 from enum import Enum
+from importlib.metadata import version
 from pathlib import Path
 from typing import NamedTuple, Optional
-from .__version__ import __version__
 
 import click
 import numpy as np
@@ -16,7 +16,6 @@ from rich.prompt import Confirm
 from rich.table import Table
 from typing_extensions import Annotated
 
-
 app = typer.Typer(no_args_is_help=True, help="A CLI for working with CSV data")
 impute_app = typer.Typer(no_args_is_help=True, help="Impute CSV data")
 app.add_typer(impute_app, name="impute")
@@ -29,7 +28,7 @@ def print_version(val: bool):
     if not val:
         return
 
-    print(f"csv-helper version {__version__}")
+    print(f"csv-helper version {version('csv_helper')}")
     raise typer.Exit()
 
 
@@ -39,9 +38,9 @@ def callback(
         False,
         "--version",
         "-v",
-        callback=print_version,
         is_eager=True,
         help="Print the version and exit.",
+        callback=print_version,
     ),
 ) -> None:
     pass

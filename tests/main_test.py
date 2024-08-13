@@ -47,6 +47,11 @@ def test_data_sep(tmp_path) -> Path:
     return data_dir / "test_pair_sep"
 
 
+# NOTE: can also access funcs in csv_helper.main directly:
+# from csv_helper.main import preview
+# preview("./tests/data/test_impute_data.csv", 10)
+
+
 def test_preview(test_data):
     result = runner.invoke(app, ["preview", str(test_data), "-n", "15"])
     assert result.exit_code == 0
