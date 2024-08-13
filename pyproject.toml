@@ -1,6 +1,6 @@
 [project]
 name = "csv-helper"
-version = "0.2.0"
+version = "0.2.1"
 description = "A simple CLI for imputing masked counts in CSV data"
 authors = [
     {name = "Andrew Tiu", email = "andrew.tiu88@gmail.com"},

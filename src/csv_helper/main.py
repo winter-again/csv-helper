@@ -286,6 +286,9 @@ def impute_file(
     ) as progress:
         progress.add_task(description="Imputing...", total=None)
 
+        # WARN: setting seed means that each use of this CLI cmd with same seed
+        # will generate same integers, but repeated calls inside of this func
+        # won't generate the same set of integers
         rng = np.random.default_rng(seed)
         cast_type = ColType[col_type]
 
@@ -296,7 +299,9 @@ def impute_file(
                 pl.lit(
                     # NOTE: must specify size to be height of df despite not filling every row
                     # thus, we get "new" rand int per row
-                    rng.integers(fill_range.lb, fill_range.ub + 1, size=df.height)
+                    rng.integers(
+                        fill_range.lb, fill_range.ub, size=df.height, endpoint=True
+                    )
                 )
             )
             .otherwise(pl.col(fill_col))
@@ -341,6 +346,14 @@ def parse_fill_cols(fill_cols: str) -> FillCols:
 
 def parse_sep_cols(sep_cols: str) -> list[str]:
     return [col.strip() for col in sep_cols.split(",")]
+
+
+def impute_capped(denom: int, fill_range: FillRange, rng: Generator) -> int:
+    """
+    Return a random integer from a range that is capped
+    at the 'denominator' value
+    """
+    return rng.integers(fill_range.lb, denom, size=1, endpoint=True)
 
 
 @impute_app.command("pair")
@@ -518,6 +531,15 @@ def impute_pair(
             raise typer.Abort()
 
         if sep_out is not None:
+            if not fill_flag_exists(df_denom, fill_cols.denominator, fill_flag):
+                print(
+                    f"""
+                    The denominator file {sep_denom} doesn't contain any instancees of {fill_flag}
+                    in {fill_cols.denominator}. Rerun the command without specifying --sep-out.
+                    """
+                )
+                raise typer.Abort()
+
             if sep_out.is_file() and not force:
                 overwrite_out = Confirm.ask(
                     f"[blue bold]{sep_out}[/blue bold] already exists. Do you want to overwrite it?"
@@ -556,7 +578,26 @@ def impute_pair(
         rng = np.random.default_rng(seed)
         cast_type = ColType[col_type]
 
+        t0 = time.perf_counter()
+        # NOTE: impute df_denom before attempting join
         if sep_denom is not None:
+            df_denom = df_denom.with_columns(
+                pl.when(pl.col(fill_cols.denominator) == fill_flag)
+                .then(
+                    pl.lit(
+                        rng.integers(
+                            fill_range.lb,
+                            fill_range.ub,
+                            size=df_denom.height,
+                            endpoint=True,
+                        )
+                    )
+                )
+                .otherwise(pl.col(fill_cols.denominator))
+                .alias(fill_cols.denominator)
+                .cast(cast_type.value)
+            )
+
             # NOTE: `validate` default is "m:m" -> forcing a 1:1 relationship of the join
             try:
                 df = df.join(
@@ -567,17 +608,23 @@ def impute_pair(
                     "The join with --sep-denom failed because there is not a 1:1 relationship between the join keys."
                 )
                 raise typer.Abort()
-
-        t0 = time.perf_counter()
-        df = df.with_columns(
-            pl.when(pl.col(fill_cols.denominator) == fill_flag)
-            .then(
-                pl.lit(rng.integers(fill_range.lb, fill_range.ub + 1, size=df.height))
+        else:
+            df = df.with_columns(
+                pl.when(pl.col(fill_cols.denominator) == fill_flag)
+                .then(
+                    pl.lit(
+                        rng.integers(
+                            fill_range.lb, fill_range.ub, size=df.height, endpoint=True
+                        )
+                    )
+                )
+                .otherwise(pl.col(fill_cols.denominator))
+                .alias(fill_cols.denominator)
+                .cast(cast_type.value)
             )
-            .otherwise(pl.col(fill_cols.denominator))
-            .alias(fill_cols.denominator)
-            .cast(cast_type.value)
-        ).with_columns(
+
+        # NOTE: at this point, imputation of denom is done regardless of whether sep file or not
+        df = df.with_columns(
             pl.when(
                 (pl.col(fill_cols.numerator) == fill_flag)
                 & (pl.col(fill_cols.denominator) <= fill_range.ub)
@@ -585,8 +632,8 @@ def impute_pair(
             # map_elements() will run Python so it's slow
             .then(
                 pl.col(fill_cols.denominator).map_elements(
-                    lambda x: fill_parallel(
-                        x,
+                    lambda denom: impute_capped(
+                        denom,
                         fill_range,
                         rng,
                     ),
@@ -598,7 +645,11 @@ def impute_pair(
                 & (pl.col(fill_cols.denominator) > fill_range.ub)
             )
             .then(
-                pl.lit(rng.integers(fill_range.lb, fill_range.ub + 1, size=df.height))
+                pl.lit(
+                    rng.integers(
+                        fill_range.lb, fill_range.ub, size=df.height, endpoint=True
+                    )
+                )
             )
             .otherwise(pl.col(fill_cols.numerator))
             .alias(fill_cols.numerator)
@@ -610,8 +661,6 @@ def impute_pair(
         if create_dir:
             output.parent.mkdir(parents=True)
 
-        # TODO: instead of *sep_cols, might need to make fewer assumptions
-        # specify via negation?
         if sep_denom is not None:
             if sep_out is not None:
                 df.select(pl.col("*").exclude(fill_cols.numerator)).write_csv(sep_out)
@@ -652,15 +701,6 @@ def impute_pair(
                 | (pl.col(fill_cols.denominator) <= fill_range.ub)
             ).head()
         )
-
-
-def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -> int:
-    """
-    Return a random integer from a range that is capped
-    at the 'denominator' value
-    """
-    val = rng.integers(fill_range_int.lb, denominator + 1)
-    return val
 
 
 @impute_app.command("dir")
@@ -800,7 +840,9 @@ def impute_dir(
                 pl.lit(
                     # NOTE: must specify size to be height of df despite not filling every row
                     # thus, we get "new" rand int per row
-                    rng.integers(fill_range.lb, fill_range.ub + 1, size=df.height)
+                    rng.integers(
+                        fill_range.lb, fill_range.ub, size=df.height, endpoint=True
+                    )
                 )
             )
             .otherwise(pl.col(fill_col))

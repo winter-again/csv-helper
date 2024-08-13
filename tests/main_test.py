@@ -1,4 +1,5 @@
 import shutil
+from importlib.metadata import version
 from pathlib import Path, PureWindowsPath
 from sys import platform
 from textwrap import dedent
@@ -7,8 +8,6 @@ import polars as pl
 import pytest
 from csv_helper.main import app
 from typer.testing import CliRunner
-
-from importlib.metadata import version
 
 runner = CliRunner()
 
@@ -184,6 +183,60 @@ def test_impute_file(tmp_path, test_data):
         .item()
         is True
     )
+
+
+def test_impute_file_repro(tmp_path, test_data):
+    out_file_1 = tmp_path / "test_impute_output_1.csv"
+    out_file_2 = tmp_path / "test_impute_output_2.csv"
+    fill_range = (1, 5)
+
+    result_1 = runner.invoke(
+        app,
+        [
+            "impute",
+            "file",
+            str(test_data),
+            str(out_file_1),
+            "-c",
+            "cases",
+            "-f",
+            f"<={fill_range[1]}",
+            "-r",
+            f"{fill_range[0]},{fill_range[1]}",
+            "-s",
+            "123",
+        ],
+    )
+    assert result_1.exit_code == 0
+    assert out_file_1.is_file() is True
+
+    result_2 = runner.invoke(
+        app,
+        [
+            "impute",
+            "file",
+            str(test_data),
+            str(out_file_2),
+            "-c",
+            "cases",
+            "-f",
+            f"<={fill_range[1]}",
+            "-r",
+            f"{fill_range[0]},{fill_range[1]}",
+            "-s",
+            "123",
+        ],
+    )
+    assert result_2.exit_code == 0
+    assert out_file_2.is_file() is True
+
+    df_1 = pl.read_csv(out_file_1, infer_schema_length=0)
+    assert df_1.select((pl.col("cases") == f"<={fill_range[1]}").any()).item() is False
+
+    df_2 = pl.read_csv(out_file_2, infer_schema_length=0)
+    assert df_2.select((pl.col("cases") == f"<={fill_range[1]}").any()).item() is False
+
+    assert df_1.equals(df_2) is True
 
 
 def test_impute_file_output_exists(tmp_path, test_data):
@@ -648,7 +701,6 @@ def test_impute_pair_sep_output(tmp_path, test_data_sep):
             | (pl.col("all_cause") == f"<={fill_range[1]}")
         )
     )
-    print(df)
     assert (
         df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
         is False
