@@ -654,6 +654,15 @@ def impute_pair(
         )
 
 
+def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -> int:
+    """
+    Return a random integer from a range that is capped
+    at the 'denominator' value
+    """
+    val = rng.integers(fill_range_int.lb, denominator + 1)
+    return val
+
+
 @impute_app.command("dir")
 def impute_dir(
     input_dir: Annotated[
@@ -819,15 +828,6 @@ def impute_dir(
             print(table)
 
             print(df.filter(pl.col(fill_col) <= fill_range.ub).head())
-
-
-def fill_parallel(denominator: int, fill_range_int: FillRange, rng: Generator) -> int:
-    """
-    Return a random integer from a range that is capped
-    at the 'denominator' value
-    """
-    val = rng.integers(fill_range_int.lb, denominator + 1)
-    return val
 
 
 if __name__ == "__main__":
