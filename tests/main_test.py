@@ -599,6 +599,10 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
     df_num = pl.read_csv(num_file, infer_schema_length=0)
     df_out = pl.read_csv(out_file, infer_schema_length=0)
     assert df_num.shape == df_out.shape
+    assert (
+        df_out.select((pl.col("cases") == f"<={fill_range[1]}").any()).item() is False
+    )
+    assert df_num.null_count().equals(df_out.null_count()) is True
 
     # NOTE: can't test if all imputed cases <= all-cause since we don't save imputed all-cause in this case
     df = df_num.join(
@@ -688,6 +692,10 @@ def test_impute_pair_sep_output(tmp_path, test_data_sep):
 
     df_out = pl.read_csv(out_file, infer_schema_length=0)
     assert df_num.shape == df_out.shape
+    assert (
+        df_out.select((pl.col("cases") == f"<={fill_range[1]}").any()).item() is False
+    )
+    assert df_num.null_count().equals(df_out.null_count()) is True
 
     df_sep_out = pl.read_csv(sep_out, infer_schema_length=0)
     assert df_denom.shape == df_sep_out.shape

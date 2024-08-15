@@ -353,7 +353,9 @@ def impute_capped(denom: int, fill_range: FillRange, rng: Generator) -> int:
     Return a random integer from a range that is capped
     at the 'denominator' value
     """
-    return rng.integers(fill_range.lb, denom, size=1, endpoint=True)
+    # WARN: specifying size=1 instead of leaving size = None
+    # will return single-value list instead of just the value
+    return rng.integers(fill_range.lb, denom, endpoint=True)
 
 
 @impute_app.command("pair")
@@ -678,7 +680,7 @@ def impute_pair(
             f"{imp_sizes[0]:_}",
         )
         table.add_row(
-            f"[blue]Proportion of imputed values in[/blue] '{fill_cols.numerator}",
+            f"[blue]Proportion of imputed values in[/blue] '{fill_cols.numerator}'",
             f"{(imp_sizes[0] / df.height):0.2f} (n = {df.height:_})",
             end_section=True,
         )
