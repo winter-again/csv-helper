@@ -35,8 +35,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # pdm install -d -G tox
-          python -m pip install --upgrade tox tox-pdm
+          pdm install -d -G tox
+          # python -m pip install --upgrade tox tox-pdm
       - name: Run tests with tox
         run: |
           pdm run tox --version
