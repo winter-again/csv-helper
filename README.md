@@ -1,6 +1,6 @@
 # csv-helper
 
-![Tests](https://github.com/winter-again/csv-helper/actions/workflows/Test/badge.svg)
+![Tests](https://github.com/winter-again/csv-helper/workflows/Tests/badge.svg)
 
 A CLI for working with CSV data. Currently, primary focus is on workflows for imputing masked counts data.
 

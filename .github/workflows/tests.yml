@@ -1,8 +1,16 @@
-name: CI
+name: Tests
 
 on:
   push:
+    branches:
+      - main
+    paths-ignore:
+      - "*.md"
   pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "*.md"
 
 jobs:
   test:
@@ -27,7 +35,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pdm sync -d -G testing
-      - name: Run tests
+          # pdm install -d -G tox
+          python -m pip install --upgrade tox tox-pdm
+      - name: Run tests with tox
         run: |
-          pdm run -v pytest tests
+          pdm run tox --version
+          pdm run tox -e py
