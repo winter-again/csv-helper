@@ -6,6 +6,8 @@ on:
 
 jobs:
   test:
+    name: Test
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -13,9 +15,6 @@ jobs:
         python-version: 
           - "3.11"
           - "3.12"
-
-    name: Test
-    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
