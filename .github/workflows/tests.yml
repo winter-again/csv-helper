@@ -33,7 +33,7 @@ jobs:
         with:
           version: "0.5.5"
 
-      - name: Set up Python ${{ matrx.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install project
