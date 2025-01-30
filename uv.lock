@@ -24,7 +24,7 @@ name = "click"
 version = "8.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "platform_system == 'Windows'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/96/d3/f04c7bfcf5c1862a2a5b845c6b2b360488cf47af55dfa79c98f6a6bf98b5/click-8.1.7.tar.gz", hash = "sha256:ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de", size = 336121 }
 wheels = [
@@ -196,15 +196,16 @@ wheels = [
 
 [[package]]
 name = "polars"
-version = "1.16.0"
+version = "1.21.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/43/80/d845897273be97a3e73b59be711deda375b638330d591a7ef8132c20f52f/polars-1.16.0.tar.gz", hash = "sha256:dd99808b833872babe02434a809fd45c1cffe66a3d57123cdc5e447c7753d328", size = 4192568 }
+sdist = { url = "https://files.pythonhosted.org/packages/98/49/3733f0a34fd2504264579bad2c66021e175ab548b21767340721e10a1dcf/polars-1.21.0.tar.gz", hash = "sha256:7692d0fe0fb4faac18ef9423de55789e289f4d3f26d42519bd23ef8afb672d62", size = 4323012 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/b0/51c944ecd58b3ebc81eb03b50448127ff85fd9448063094524e0c6693c75/polars-1.16.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:072f5ff3b5fe05797c59890de0e464b34ede75a9735e7d7221622fa3a0616d8e", size = 34735038 },
-    { url = "https://files.pythonhosted.org/packages/61/2f/d0b45007f2ae4b4926070b420c8525840b9757013cd96077bcde40807ecb/polars-1.16.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:ebaf7a1ea114b042fa9f1cd17d49436279eb30545dd74361a2f5e3febeb867cd", size = 30577461 },
-    { url = "https://files.pythonhosted.org/packages/31/9e/21e05959323883abcee799837d8cac08adf10a48c233432993757e41791a/polars-1.16.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e626d21dcd2566e1442dac414fe177bc70ebfc2f16620d59d778b1b774361018", size = 36006233 },
-    { url = "https://files.pythonhosted.org/packages/25/80/da5c3cd248c7642d1feb896f0a27a0860c607f8cdde3e75457182e4c76c6/polars-1.16.0-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:53debcce55f68731ee2c7d6c787afdee26860ed6576f1ffa0cb9111b57f82857", size = 32348398 },
-    { url = "https://files.pythonhosted.org/packages/08/0b/677c905f9dd5bc37708694e8f7367659c5382bd011f5dc1d564474032d0b/polars-1.16.0-cp39-abi3-win_amd64.whl", hash = "sha256:17efcb550c42d51034ff79702612b9184d8eac0d500de1dd7fb98490459276d3", size = 35743314 },
+    { url = "https://files.pythonhosted.org/packages/d4/c3/976f0251e96c957143905530b236f1e278b28a8eb5850eab94595bf5d220/polars-1.21.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:063f8807f633f8fd15458a43971d930f6ee568b8e95936d7736c9054fc4f6f52", size = 31015281 },
+    { url = "https://files.pythonhosted.org/packages/94/33/c55c19dde172e34dd7a5074a1dcac6472074236131698269db236550283e/polars-1.21.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:519863e0990e3323e7a32fc66bac3ad9da51938a1ffce6c09a92e0b1adb026a5", size = 28033973 },
+    { url = "https://files.pythonhosted.org/packages/da/72/b108cd7e063f03f5b029edbd73ca514291dd3e3d88617965d09df64d71ba/polars-1.21.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bbecddca35c57efde99070517db5d2c63d4c6d0e3c992123ba3be93e86e7bfac", size = 31641844 },
+    { url = "https://files.pythonhosted.org/packages/ac/0a/1df51a9e09fb9974a511eb098e13afed916e8643556799799884f22c7869/polars-1.21.0-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:d9ce8e6f0d8140e67b0f7c276d22bb5f3345ce7412558643c8b5c270db254b64", size = 29005158 },
+    { url = "https://files.pythonhosted.org/packages/90/4b/f75f0eb9527c943440c6ed90be7e97146a00699fee69f9d5aff577f15659/polars-1.21.0-cp39-abi3-win_amd64.whl", hash = "sha256:c4517abb008af890e4ca8fb6bb0372868381017af0ecadf9d062e2f91f50b276", size = 31729901 },
+    { url = "https://files.pythonhosted.org/packages/e6/a0/d48548f4c9e139b02eacfc074bfd02d98d9bb5f9bf9c03ec5649a481d8ff/polars-1.21.0-cp39-abi3-win_arm64.whl", hash = "sha256:6bb0ba805defb05b76fdca392e48d84d1f16403de5be25d4dd8cdc7fccfd4251", size = 28179572 },
 ]
 
 [[package]]
