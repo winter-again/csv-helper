@@ -13,6 +13,6 @@ pip install git+https://git@github.com/winter-again/csv-helper
 # or via SSH
 pip install git+ssh://git@github.com/winter-again/csv-helper
 
-# designate specific version
+# designate specific version tag or branch
 pip install git+ssh://git@github.com/winter-again/csv-helper.git@v0.1.0
 ```

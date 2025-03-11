@@ -172,11 +172,32 @@ def parse_fill_range(fill_range: tuple[int, int]) -> FillRange:
     return fill_range_int
 
 
-# TODO: instead of relying on .unique(), can allow user-defined mapping from col name
-# to list of possible values?
-def complete_rows(df: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+def complete_total_rows(df: pl.DataFrame, columns: list[pl.Series]) -> pl.DataFrame:
     """
-    Generate implicit missing rows based on the unique combinations
+    Generate missing rows based on unique combinations of the
+    given list of series. The missing values will be nulls.
+    """
+    lfs = [pl.LazyFrame(col.unique()) for col in columns]
+    combos = lfs[0]
+    for lf in lfs[1:]:
+        combos = combos.join(lf, how="cross")
+
+    df_combos = combos.collect()
+
+    col_names = [col.name for col in columns]
+    df = df_combos.join(
+        df,
+        on=col_names,
+        how="left",
+        validate="1:1",
+    )
+
+    return df
+
+
+def complete_present_rows(df: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+    """
+    Generate missing rows based on the unique combinations
     of the given columns' values. The missing values will be nulls.
     """
     df_expand = df.select(pl.col(columns).unique().implode())
