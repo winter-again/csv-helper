@@ -45,6 +45,8 @@ def check(df: pl.DataFrame, fill_cols: list[str], fill_flag: str) -> pl.DataFram
     )
 
 
+# TODO: instead of separate lazy func, let this take df or lf
+# or have bool arg that determines whether .lazy() conversion happens?
 def impute_columns(
     df: pl.DataFrame,
     fill_cols: list[str],
