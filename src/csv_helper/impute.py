@@ -1,10 +1,12 @@
-from typing import NamedTuple
+from typing import Any, NamedTuple, TypeVar
 
 import numpy as np
 import polars as pl
 from polars._typing import PolarsDataType
 
 
+# TODO: make this a check func that returns bool instead?
+# and separate this into another func like summarize()?
 def check(df: pl.DataFrame, fill_cols: list[str], fill_flag: str) -> pl.DataFrame:
     """
     Return dataframe with counts and proportion of instances of `fill_flag` in each of
@@ -47,6 +49,7 @@ def check(df: pl.DataFrame, fill_cols: list[str], fill_flag: str) -> pl.DataFram
 
 # TODO: instead of separate lazy func, let this take df or lf
 # or have bool arg that determines whether .lazy() conversion happens?
+# TODO: add asserts for shape?
 def impute_columns(
     df: pl.DataFrame,
     fill_cols: list[str],
@@ -174,54 +177,38 @@ def parse_fill_range(fill_range: tuple[int, int]) -> FillRange:
     return fill_range_int
 
 
-def complete_total_rows(df: pl.DataFrame, columns: list[pl.Series]) -> pl.DataFrame:
-    """
-    Generate missing rows based on unique combinations of the
-    given list of series. The missing values will be nulls.
-    """
-    lfs = [pl.LazyFrame(col.unique()) for col in columns]
-    combos = lfs[0]
-    for lf in lfs[1:]:
-        combos = combos.join(lf, how="cross")
+TFrame = TypeVar("TFrame", pl.DataFrame, pl.LazyFrame)
 
-    df_combos = combos.collect()
 
-    col_names = [col.name for col in columns]
-    df = df_combos.join(
-        df,
-        on=col_names,
-        how="left",
-        validate="1:1",
+def complete(df: TFrame, *columns: str | pl.Series) -> TFrame:
+    """
+    Generate rows for implicit missing values based on column combinations,
+    thus making them explicit missing values. Generated values marked as null.
+
+    If columns are referenced with strings, then only existing values in those
+    columns are used for completion. If Series are specified instead, then
+    those Series can specify the full set of possible values, provided that
+    the Series is named after an existing column.
+    """
+    cols = []
+    for col in columns:
+        if isinstance(col, str):
+            cols.append(pl.col(col).unique().implode())
+        elif isinstance(col, pl.Series):
+            cols.append(col.unique().implode())
+        else:
+            raise TypeError(
+                f"The columns argument(s) must be either string or polars Series. Got {type(col)} instead."
+            )
+
+    unique_combos = df.select(cols)
+    col_names = unique_combos.collect_schema().names()
+    for col in col_names:
+        unique_combos = unique_combos.explode(col)
+
+    return unique_combos.join(
+        df, on=col_names, how="left", coalesce=True, validate="1:1"
     )
-
-    return df
-
-
-def complete_present_rows(df: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
-    """
-    Generate missing rows based on the unique combinations
-    of the given columns' values. The missing values will be nulls.
-    """
-    df_expand = df.select(pl.col(columns).unique().implode())
-    for col in columns:
-        df_expand = df_expand.explode(col)
-
-    df = df_expand.join(df, on=columns, how="left", coalesce=True)
-
-    return df
-
-
-def _complete_rows_lazy(
-    lf: pl.DataFrame | pl.LazyFrame, columns: list[str]
-) -> pl.DataFrame:
-    lf = lf.lazy()
-    lf_expand = lf.select(pl.col(columns).unique().implode())
-    for col in columns:
-        lf_expand = lf_expand.explode(col)
-
-    df = lf_expand.join(lf, on=columns, how="left", coalesce=True).collect()
-
-    return df
 
 
 def impute_column_pair(
@@ -241,8 +228,8 @@ def impute_column_pair(
     of fill_cols to that type. Currently, the only options are
     Polars numeric types.
     """
-    # TODO: this should also handle denom being in another file like the CLI
-    # command?
+    # TODO: should this also handle denom being in another file or dataframe (like the CLI
+    # command?)
 
     if numerator not in df.columns:
         raise ValueError(f"Column {numerator} doesn't exist")
@@ -284,8 +271,9 @@ def impute_column_pair(
             & (pl.col(denominator) <= fill_range_int.ub)
         )
         .then(
-            pl.int_ranges(fill_range_int.lb, pl.col(denominator) + 1)
+            # TODO: look into high mem consumption for this pl.when()
             # TODO: use of seed?
+            pl.int_ranges(fill_range_int.lb, pl.col(denominator) + 1)
             .list.sample(1)
             .explode()
         )
