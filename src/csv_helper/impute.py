@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple, TypeVar
+from typing import NamedTuple
 
 import numpy as np
 import polars as pl
@@ -50,6 +50,7 @@ def check(df: pl.DataFrame, fill_cols: list[str], fill_flag: str) -> pl.DataFram
 # TODO: instead of separate lazy func, let this take df or lf
 # or have bool arg that determines whether .lazy() conversion happens?
 # TODO: add asserts for shape?
+# TODO: use TFrame here?
 def impute_columns(
     df: pl.DataFrame,
     fill_cols: list[str],
@@ -177,10 +178,7 @@ def parse_fill_range(fill_range: tuple[int, int]) -> FillRange:
     return fill_range_int
 
 
-TFrame = TypeVar("TFrame", pl.DataFrame, pl.LazyFrame)
-
-
-def complete(df: TFrame, *columns: str | pl.Series) -> TFrame:
+def complete[T: (pl.DataFrame, pl.LazyFrame)](df: T, *columns: str | pl.Series) -> T:
     """
     Generate rows for implicit missing values based on column combinations,
     thus making them explicit missing values. Generated values marked as null.
