@@ -2,7 +2,15 @@ from typing import NamedTuple
 
 import numpy as np
 import polars as pl
-from polars._typing import PolarsDataType
+from polars._typing import PolarsIntegerType
+
+
+def foo(
+    df: pl.DataFrame,
+    column: str,
+    dtype: PolarsIntegerType | type[pl.Float64] | type[pl.Float32] = pl.Int64,
+) -> pl.DataFrame:
+    return df.with_columns(pl.col(column).cast(dtype))
 
 
 # TODO: make this a check func that returns bool instead?
@@ -52,7 +60,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
     columns: list[str],
     fill_flag: str,
     fill_range: tuple[int, int],
-    dtype: PolarsDataType = pl.Int64,
+    dtype: PolarsIntegerType | type[pl.Float64] | type[pl.Float32] = pl.Int64,
     seed: int | None = None,
 ) -> T:
     """
@@ -61,7 +69,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
     (bounds inclusive).
 
     If `dtype` is specified, will attempt to cast the filled columns
-    to that Polars type. Otherwise, assumes pl.Int64.
+    to that Polars type. Only supports Polars integer and float types.
     """
     for col in columns:
         if col not in df.columns:
@@ -136,26 +144,28 @@ def parse_fill_range(fill_range: tuple[int, int]) -> FillRange:
     return fill_range_int
 
 
-def impute_column_pair(
-    df: pl.DataFrame,
+def column_pair[T: (pl.DataFrame, pl.LazyFrame)](
+    df: T,
     numerator: str,
     denominator: str,
     fill_flag: str,
     fill_range: tuple[int, int],
-    col_type: PolarsDataType = pl.Int64,
+    dtype: PolarsIntegerType | type[pl.Float64] | type[pl.Float32] = pl.Int64,
     seed: int | None = None,
-) -> pl.DataFrame:
+) -> T:
     """
-    Fill instances of the fill_flag in both the numerator column
-    and the denominator column such that numerator <= denominator.
+    Fill instances of the `fill_flag` in both the `numerator` column
+    and the `denominator` column such that numerator <= denominator.
 
-    If col_type is specified, will attempt to cast the final result
-    of fill_cols to that type. Currently, the only options are
-    Polars numeric types.
+    If `dtype` is specified, will attempt to cast the final result
+    to that Polars type. Only supports Polars integer and float types.
+
+    Note: `seed` is only used for (1) imputing the denominator and (2) the
+    numerator case where the denominator is greater than the `fill_range`
+    upper bound. This is because we cannot guarantee desired reproducible
+    behavior in the numerator when denominator is less than or equal to the
+    `fill_range` upper bound since such imputation happens per-row.
     """
-    # TODO: should this also handle denom being in another file or dataframe (like the CLI
-    # command?)
-
     if numerator not in df.columns:
         raise ValueError(f"Column {numerator} doesn't exist")
 
@@ -174,7 +184,6 @@ def impute_column_pair(
 
     fill_range_int = parse_fill_range(fill_range)
 
-    # TODO: I think repeated use of the same seed is undesirable
     df = df.with_columns(
         pl.when(pl.col(denominator) == fill_flag)
         .then(
@@ -186,18 +195,15 @@ def impute_column_pair(
         )
         .otherwise(pl.col(denominator))
         .alias(denominator)
-        .cast(col_type)
-    )
-
-    df = df.with_columns(
+        .cast(dtype)
+    ).with_columns(
         # TODO: use list b/c no arr.sample() what about struct perf?
+        # TODO: look into high mem consumption b/c of pl.int_ranges()
         pl.when(
             (pl.col(numerator) == fill_flag)
             & (pl.col(denominator) <= fill_range_int.ub)
         )
         .then(
-            # TODO: look into high mem consumption for this pl.when()
-            # TODO: use of seed?
             pl.int_ranges(fill_range_int.lb, pl.col(denominator) + 1)
             .list.sample(1)
             .explode()
@@ -207,7 +213,6 @@ def impute_column_pair(
         )
         .then(
             pl.int_range(fill_range_int.lb, fill_range_int.ub + 1).sample(
-                # TODO: use of seed?
                 pl.len(),
                 with_replacement=True,
                 seed=seed,
@@ -215,7 +220,7 @@ def impute_column_pair(
         )
         .otherwise(pl.col(numerator))
         .alias(numerator)
-        .cast(pl.Int64)
+        .cast(dtype)
     )
 
     return df
