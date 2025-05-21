@@ -37,9 +37,10 @@ df_inp = pl.DataFrame(
 )
 
 # TODO: test values are <= 5
+# TODO: test with seed?
 
 
-def test_impute_columns() -> None:
+def test_impute_columns_single() -> None:
     df = df_inp.pipe(impute.columns, ["count"], "<=5", (1, 5), pl.String)
 
     assert df.select((pl.col("count") == "<=5").any()).item() is False
