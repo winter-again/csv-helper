@@ -6,8 +6,9 @@ from textwrap import dedent
 
 import polars as pl
 import pytest
-from csv_helper.main import app
 from typer.testing import CliRunner
+
+from csv_helper.main import app
 
 runner = CliRunner()
 

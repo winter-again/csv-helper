@@ -4,7 +4,7 @@ from polars.testing import assert_frame_equal
 from csv_helper import impute
 
 
-def test_complete_exists():
+def test_complete_exists() -> None:
     df = pl.DataFrame(
         {
             "country": ["France", "France", "UK", "UK", "Spain"],
@@ -46,7 +46,7 @@ def test_complete_exists():
     assert_frame_equal(lf, result)
 
 
-def test_complete_not_exists():
+def test_complete_not_exists() -> None:
     # TODO: add lazy test
     df = pl.DataFrame(
         {
