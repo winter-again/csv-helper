@@ -21,25 +21,23 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: 
-          - "3.11"
           - "3.12"
+          - "3.13"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
         with:
-          version: "0.5.5"
+          version: "0.7.7"
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install project
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
-      - name: Run tests with tox
-        run: |
-          uv run -- tox --version
-          uv run -- tox -e py
+      - name: Run tests with nox on ${{ matrix.os }}
+        run: uv run -- nox -s "${{ matrix.python-version }}"
