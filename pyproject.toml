@@ -18,9 +18,5 @@ build-backend = "pdm.backend"
 [dependency-groups]
 dev = ["pytest>=8.3.2", "tox>=4.23.2", "tox-uv>=1.16.0"]
 
-[tool.pyright]
-include = ["src"]
-exclude = ["**/__pycache__"]
-
 [tool.pytest.ini_options]
 pythonpath = ["src"]
