@@ -2,13 +2,13 @@
 
 ![Tests](https://github.com/winter-again/csv-helper/workflows/Tests/badge.svg)
 
-A CLI for working with CSV data. Currently, primary focus is on workflows for imputing masked counts data.
-
-Note: `tests/data` has testing data
+A simple library and CLI for working with CSV data.
 
 ## Installation
 
-```bash
+```sh
+uv add "csv-helper @ git+ssh://git@github.com/winter-again/csv-helper"
+# using pip
 pip install git+https://git@github.com/winter-again/csv-helper
 # or via SSH
 pip install git+ssh://git@github.com/winter-again/csv-helper
