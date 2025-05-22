@@ -41,15 +41,16 @@ df_inp = pl.DataFrame(
 
 
 def test_impute_columns_single() -> None:
-    df = df_inp.pipe(impute.columns, ["count"], "<=5", (1, 5), pl.String)
+    df = df_inp.pipe(impute.columns, ["count"], "<=5", (1, 5))
 
-    assert df.select((pl.col("count") == "<=5").any()).item() is False
+    assert df.select((pl.col("count").cast(pl.String) == "<=5").any()).item() is False
 
 
 def test_impute_columns_multi() -> None:
-    df = df_inp.pipe(impute.columns, ["count", "count_2"], "<=5", (1, 5), pl.String)
+    df = df_inp.pipe(impute.columns, ["count", "count_2"], "<=5", (1, 5))
 
     assert (
-        df.select((pl.col("count") == "<=5").any()).item() is False
-        and df.select((pl.col("count_2") == "<=5").any()).item() is False
+        df.select((pl.col("count").cast(pl.String) == "<=5").any()).item() is False
+        and df.select((pl.col("count_2").cast(pl.String) == "<=5").any()).item()
+        is False
     )

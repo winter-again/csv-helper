@@ -1,7 +1,7 @@
 import polars as pl
 from polars.testing import assert_frame_equal
 
-from csv_helper import impute
+from csv_helper import complete
 
 
 def test_complete_exists() -> None:
@@ -12,7 +12,7 @@ def test_complete_exists() -> None:
             "value": [1, 2, 3, 4, 5],
         }
     )
-    df = df.pipe(impute.complete, "country", "year").sort("country", "year")
+    df = df.pipe(complete.complete, "country", "year").sort("country", "year")
     result = pl.DataFrame(
         {
             "country": [
@@ -32,7 +32,7 @@ def test_complete_exists() -> None:
             "value": [1, 2, 3, 4, 5],
         }
     )
-    lf = lf.pipe(impute.complete, "country", "year").sort("country", "year")
+    lf = lf.pipe(complete.complete, "country", "year").sort("country", "year")
     result = pl.LazyFrame(
         {
             "country": [
@@ -56,7 +56,7 @@ def test_complete_not_exists() -> None:
         }
     )
     df = df.pipe(
-        impute.complete,
+        complete.complete,
         pl.Series("country", ["France", "UK", "Spain", "China"]),
         "year",
     ).sort("country", "year")
