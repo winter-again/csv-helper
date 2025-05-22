@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from typer.testing import CliRunner
 
-from csv_helper.main import app
+from csv_helper.cli import app
 
 runner = CliRunner()
 
@@ -49,8 +49,8 @@ def test_data_sep(tmp_path) -> Path:
     return data_dir / "test_pair_sep"
 
 
-# NOTE: can also access funcs in csv_helper.main directly:
-# from csv_helper.main import preview
+# NOTE: can also access funcs in csv_helper.cli directly:
+# from csv_helper.cli import preview
 # preview("./tests/data/test_impute_data.csv", 10)
 
 

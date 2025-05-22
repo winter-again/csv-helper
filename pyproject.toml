@@ -1,15 +1,19 @@
 [project]
 name = "csv-helper"
 version = "0.2.3"
-description = "A simple CLI and library for imputing masked counts in CSV data"
+description = "A simple library and CLI for working with CSV data"
 readme = "README.md"
 authors = [{ name = "Andrew Tiu", email = "andrew.tiu88@gmail.com" }]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.13"
-dependencies = ["typer>=0.12.3", "polars>=1.4.1", "numpy>=2.0.1"]
+dependencies = [
+    "numpy>=2.2.6",
+    "polars>=1.30.0",
+    "typer>=0.15.4",
+]
 
 [project.scripts]
-csv-helper = "csv_helper.main:app"
+csv-helper = "csv_helper.cli:app"
 
 [build-system]
 requires = ["pdm-backend"]
@@ -17,6 +21,3 @@ build-backend = "pdm.backend"
 
 [dependency-groups]
 dev = ["pytest>=8.3.2", "tox>=4.23.2", "tox-uv>=1.16.0"]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
