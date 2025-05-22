@@ -5,7 +5,7 @@ description = "A simple library and CLI for working with CSV data"
 readme = "README.md"
 authors = [{ name = "Andrew Tiu", email = "andrew.tiu88@gmail.com" }]
 license = "MIT"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.2.6",
     "polars>=1.30.0",
@@ -20,4 +20,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [dependency-groups]
-dev = ["pytest>=8.3.2", "tox>=4.23.2", "tox-uv>=1.16.0"]
+dev = [
+    "nox>=2025.5.1",
+    "pytest>=8.3.5",
+]
