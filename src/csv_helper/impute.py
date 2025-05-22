@@ -156,7 +156,7 @@ def column_pair[T: (pl.DataFrame, pl.LazyFrame)](
     Note: `seed` is only used for (1) imputing the denominator and (2) the
     numerator case where the denominator is greater than the `fill_range`
     upper bound. This is because we cannot guarantee desired reproducible
-    behavior in the numerator when denominator is less than or equal to the
+    behavior for the numerator when denominator is less than or equal to the
     `fill_range` upper bound since such imputation happens per-row.
     """
     if numerator not in df.columns:
@@ -190,8 +190,8 @@ def column_pair[T: (pl.DataFrame, pl.LazyFrame)](
         .alias(denominator)
         .cast(dtype)
     ).with_columns(
-        # TODO: use list b/c no arr.sample() what about struct perf?
-        # NOTE: high mem consumption b/c of pl.int_ranges(), but not sure how to improve
+        # NOTE: sometimes oddly high mem consumption b/c of pl.int_ranges(),
+        # but not sure how to improve
         pl.when(
             (pl.col(numerator) == fill_flag)
             & (pl.col(denominator) <= fill_range_int.ub)

@@ -27,8 +27,12 @@ def complete[T: (pl.DataFrame, pl.LazyFrame)](df: T, *columns: str | pl.Series) 
     for col in col_names:
         unique_combos = unique_combos.explode(col)
 
-    res = unique_combos.join(
-        df, on=col_names, how="left", coalesce=True, validate="1:1"
+    df = unique_combos.join(
+        df,
+        on=col_names,
+        how="left",
+        coalesce=True,
+        validate="1:1",
     )
 
-    return res
+    return df
