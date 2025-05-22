@@ -2,13 +2,13 @@ from typing import NamedTuple
 
 import numpy as np
 import polars as pl
-from polars._typing import PolarsIntegerType
+from polars.datatypes.classes import FloatType, IntegerType
 
 
 def foo(
     df: pl.DataFrame,
     column: str,
-    dtype: PolarsIntegerType | type[pl.Float64] | type[pl.Float32] = pl.Int64,
+    dtype: type[IntegerType] | type[FloatType] = pl.Int64,
 ) -> pl.DataFrame:
     return df.with_columns(pl.col(column).cast(dtype))
 
@@ -60,7 +60,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
     columns: list[str],
     fill_flag: str,
     fill_range: tuple[int, int],
-    dtype: PolarsIntegerType | type[pl.Float64] | type[pl.Float32] = pl.Int64,
+    dtype: type[IntegerType] | type[FloatType] = pl.Int64,
     seed: int | None = None,
 ) -> T:
     """
@@ -150,7 +150,7 @@ def column_pair[T: (pl.DataFrame, pl.LazyFrame)](
     denominator: str,
     fill_flag: str,
     fill_range: tuple[int, int],
-    dtype: PolarsIntegerType | type[pl.Float64] | type[pl.Float32] = pl.Int64,
+    dtype: type[IntegerType] | type[FloatType] = pl.Int64,
     seed: int | None = None,
 ) -> T:
     """
