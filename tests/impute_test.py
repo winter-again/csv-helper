@@ -46,8 +46,8 @@ def test_impute_columns_single() -> None:
     assert df.select((pl.col("count").cast(pl.String) == "<=5").any()).item() is False
 
 
-def test_impute_columns_multi() -> None:
-    df = df_inp.pipe(impute.columns, ["count", "count_2"], "<=5", (1, 5))
+def test_impute_pair() -> None:
+    df = df_inp.pipe(impute.column_pair, "count", "count_2", "<=5", (1, 5))
 
     assert (
         df.select((pl.col("count").cast(pl.String) == "<=5").any()).item() is False
