@@ -35,8 +35,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install nox
-        run: uv sync --locked --only-dev
+      - name: Install dev dependencies
+        run: uv sync --locked --only-dev --python="${{ matrix.python-version }}"
       
       - name: Run tests with nox on ${{ matrix.os }}
-        run: uv run --locked -- nox -s "tests-${{ matrix.python-version }}"
+        run: uv run --locked --python="${{ matrix.python-version }}" -- nox -s "tests-${{ matrix.python-version }}"
