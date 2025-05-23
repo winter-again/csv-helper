@@ -40,4 +40,4 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Run tests with nox on ${{ matrix.os }}
-        run: uv run -- nox -s "tests-${{ matrix.python-version }}"
+        run: uv run --locked -- nox -s "tests-${{ matrix.python-version }}"
