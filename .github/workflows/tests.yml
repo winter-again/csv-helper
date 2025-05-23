@@ -36,7 +36,7 @@ jobs:
         # run: uv python install ${{ matrix.python-version }}
 
       - name: Install project
-        run: uv sync --locked --python="3.13" --no-python-downloads
+        run: uv sync --locked --python="${{ matrix.python-version }}"
 
       - name: Run tests with nox on ${{ matrix.os }}
         run: uv run --locked -- nox -s "tests-${{ matrix.python-version }}"
