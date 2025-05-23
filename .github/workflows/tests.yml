@@ -37,7 +37,9 @@ jobs:
 
       # - name: Install project
       #   run: uv sync --locked --python="${{ matrix.python-version }}"
+      
+      - name: Install nox
+        run: uv pip install --system .
 
       - name: Run tests with nox on ${{ matrix.os }}
-        # run: uv run --locked --python="${{ matrix.python-version }}" -- nox -s "tests-${{ matrix.python-version }}"
-        run: uv tool run nox -s "tests-${{ matrix.python-version }}"
+        run: uv run --locked --python="${{ matrix.python-version }}" -- nox -s "tests-${{ matrix.python-version }}"
