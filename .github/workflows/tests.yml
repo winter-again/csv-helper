@@ -4,13 +4,9 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "*.md"
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - "*.md"
 
 jobs:
   test:
@@ -34,10 +30,13 @@ jobs:
           version: "0.7.7"
 
       - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ${{ matrix.python-version }}
+        # run: uv python install ${{ matrix.python-version }}
 
-      - name: Install project
-        run: uv sync --locked --all-extras --dev
+      # - name: Install project
+      #   run: uv sync --locked --all-extras
 
       - name: Run tests with nox on ${{ matrix.os }}
         run: uv run --locked -- nox -s "tests-${{ matrix.python-version }}"
