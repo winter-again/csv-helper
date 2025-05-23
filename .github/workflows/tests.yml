@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version-file: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
         # run: uv python install ${{ matrix.python-version }}
 
       # - name: Install project
