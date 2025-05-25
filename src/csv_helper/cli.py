@@ -2,24 +2,26 @@ import time
 from enum import Enum
 from importlib.metadata import version
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import click
 import numpy as np
 import polars as pl
 import typer
 from numpy.random import Generator
-from rich import print
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 from rich.table import Table
 from typing_extensions import Annotated
 
+from . import impute
+
 app = typer.Typer(no_args_is_help=True, help="A CLI for working with CSV data")
 impute_app = typer.Typer(no_args_is_help=True, help="Impute CSV data")
 app.add_typer(impute_app, name="impute")
 
+console = Console()
 err_console = Console(stderr=True)
 
 
@@ -86,8 +88,13 @@ def check(
             help="The CSV file to check",
         ),
     ],
-    fill_col: Annotated[
-        str, typer.Option("--col", "-c", help="Name of the column to check")
+    columns: Annotated[
+        list[str],
+        typer.Option(
+            "--col",
+            "-c",
+            help="Name of a column to check. Specify this for each column you want checked.",
+        ),
     ],
     fill_flag: Annotated[
         str,
@@ -95,19 +102,12 @@ def check(
     ],
 ) -> None:
     """
-    Check a column in a CSV file for occurrences of some string flag.
+    Summarize counts and proportion of instances of `fill_flag` in each of
+    the given columns.
     """
     df = pl.read_csv(input, infer_schema_length=0)
 
-    if fill_col not in df.columns:
-        err_console.print(f"Column {fill_col} cannot be found in {input}")
-        raise typer.Abort()
-
-    imp_size = df.filter(pl.col(fill_col) == fill_flag).height
-    print(
-        f"Found [blue]{imp_size:_}[/blue] occurrences of '{fill_flag}' in '{fill_col}' -> [blue]{(imp_size / df.height):0.2f}[/blue] of rows (n = {df.height:_})"
-    )
-    print(df.filter(pl.col(fill_col) == fill_flag).head())
+    print(impute.check(df, columns, fill_flag))
 
 
 class FillRange(NamedTuple):
@@ -117,11 +117,20 @@ class FillRange(NamedTuple):
 
 # NOTE: see https://github.com/fastapi/typer/issues/182#issuecomment-1708245110
 # and https://github.com/fastapi/typer/issues/151#issuecomment-1975322806
-# for workaround for working with enums like this such that Typer understands the args properly
-# without having to translate strings or ints to the values we really want
+# for this workaround for working with enums such that Typer understands the args properly
+# without having to map strings or ints to the values we really want
 class ColType(Enum):
-    INT64 = pl.Int64
+    FLOAT32 = pl.Float32
     FLOAT64 = pl.Float64
+    INT8 = pl.Int8
+    INT16 = pl.Int16
+    INT32 = pl.Int32
+    INT64 = pl.Int64
+    INT128 = pl.Int128
+    UINT8 = pl.UInt8
+    UINT16 = pl.UInt16
+    UINT32 = pl.UInt32
+    UINT64 = pl.UInt64
 
 
 def validate_inp_out(input: Path, output: Path, force: bool) -> None:
@@ -193,27 +202,20 @@ def impute_file(
             help="Path to target CSV file",
         ),
     ],
-    output: Annotated[
-        Path,
-        # NOTE: if exists = False, other checks still run if the Path happens to (file/dir) exist
-        typer.Argument(
-            exists=False,
-            file_okay=True,
-            dir_okay=False,
-            writable=True,
-            readable=False,
-            help="Path to save the output CSV file",
+    columns: Annotated[
+        list[str],
+        typer.Option(
+            "--col",
+            "-c",
+            help="Name of a column to impute. Specify this for each colum you wanted imputed.",
         ),
-    ],
-    fill_col: Annotated[
-        str, typer.Option("--col", "-c", help="Name of the column to impute")
     ],
     fill_flag: Annotated[
         str,
         typer.Option(
             "--flag",
             "-f",
-            help="Flag (string) to look for and replace in the target column",
+            help="Flag/marker to find and replace in the target column(s)",
         ),
     ],
     fill_range: Annotated[
@@ -222,10 +224,24 @@ def impute_file(
             "--range",
             "-r",
             metavar="TEXT",
-            help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
+            help='Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: "1,5" corresponds to the range [1, 5]',
             parser=parse_fill_range,
         ),
     ],
+    output: Annotated[
+        Path | None,
+        # NOTE: if exists = False, other checks still run if the Path happens to (file/dir) exist
+        typer.Option(
+            "--out",
+            "-o",
+            exists=False,
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+            readable=False,
+            help="Path to save the imputed CSV file. If not specified, defaults to printing result to stdout",
+        ),
+    ] = None,
     col_type: Annotated[
         str,
         typer.Option(
@@ -236,8 +252,8 @@ def impute_file(
         ),
     ] = ColType.INT64.name,
     seed: Annotated[
-        int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
-    ] = 123,
+        int | None, typer.Option("--seed", "-s", help="Random seed for reproducibility")
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -260,24 +276,15 @@ def impute_file(
     ] = False,
 ) -> None:
     """
-    Impute a target column in a CSV file. Will look for the specified filler flag in the target column
-    and replace it with a random integer from the specified range. Save the result to a new CSV file.
+    Impute target column(s) in a CSV file. Will look for the specified flag and replace
+    it with a random integer from the specified range. Optionally, save the result to a new CSV file.
     """
-    validate_inp_out(input, output, force)
-    create_dir = check_create_dir(output)
+    create_dir = False
+    if output is not None:
+        validate_inp_out(input, output, force)
+        create_dir = check_create_dir(output)
 
     df = pl.read_csv(input, infer_schema_length=0)
-
-    if fill_col not in df.columns:
-        err_console.print(f"Column {fill_col} cannot be found in {input}")
-        raise typer.Abort()
-
-    if not fill_flag_exists(df, fill_col, fill_flag):
-        err_console.print(f"Cannot find any instances of '{fill_flag}' in {fill_col}")
-        raise typer.Abort()
-
-    if verbose:
-        imp_size = df.filter(pl.col(fill_col) == fill_flag).height
 
     with Progress(
         SpinnerColumn(),
@@ -286,49 +293,27 @@ def impute_file(
     ) as progress:
         progress.add_task(description="Imputing...", total=None)
 
-        # WARN: setting seed means that each use of this CLI cmd with same seed
-        # will generate same integers, but repeated calls inside of this func
-        # won't generate the same set of integers
-        rng = np.random.default_rng(seed)
-        cast_type = ColType[col_type]
-
         t0 = time.perf_counter()
-        df = df.with_columns(
-            pl.when(pl.col(fill_col) == fill_flag)
-            .then(
-                pl.lit(
-                    # NOTE: must specify size to be height of df despite not filling every row
-                    # thus, we get "new" rand int per row
-                    rng.integers(
-                        fill_range.lb, fill_range.ub, size=df.height, endpoint=True
-                    )
-                )
-            )
-            .otherwise(pl.col(fill_col))
-            .alias(fill_col)
-            .cast(cast_type.value)
+        df = impute.columns(
+            df, columns, fill_flag, fill_range, ColType[col_type].value, seed
         )
         t1 = time.perf_counter()
 
-        if create_dir:
-            output.parent.mkdir(parents=True)
+        if output is not None:
+            if create_dir:
+                output.parent.mkdir(parents=True)
 
-        df.write_csv(output)
+            df.write_csv(output)
 
-    print("[green]Finished imputing[/green]...")
+    console.print("[green]Finished imputing[/green]...")
 
     if verbose:
-        table = Table(title="Imputation statistics", show_header=False)
-        table.add_row("[blue]Count of imputed values[/blue]", f"{imp_size:_}")
-        table.add_row(
-            "[blue]Proportion of imputed values[/blue]",
-            f"{(imp_size / df.height):0.2f} (n = {df.height:_})",
+        console.print(f"\n[bold]Time taken[/bold]: {(t1 - t0):0.3f}s", highlight=False)
+        console.print("[bold]Preview of result:[/bold]")
+        console.print(
+            df.filter(pl.col(col) <= fill_range.ub for col in columns).head(),
+            highlight=False,
         )
-        table.add_row("[blue]Seed[/blue]", f"{seed}")
-        table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
-        print(table)
-
-        print(df.filter(pl.col(fill_col) <= fill_range.ub).head())
 
 
 class FillCols(NamedTuple):
@@ -440,7 +425,7 @@ def impute_pair(
         ),
     ] = False,
     sep_denom: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--sep-denom",
             exists=True,
@@ -457,7 +442,7 @@ def impute_pair(
         ),
     ] = None,
     sep_cols: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option(
             "--sep-cols",
             help="Comma-separated list of column names on which to join the numerator and denominator data",
@@ -465,7 +450,7 @@ def impute_pair(
         ),
     ] = None,
     sep_out: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--sep-out",
             exists=False,
@@ -872,7 +857,3 @@ def impute_dir(
             print(table)
 
             print(df.filter(pl.col(fill_col) <= fill_range.ub).head())
-
-
-if __name__ == "__main__":
-    app()

@@ -45,6 +45,7 @@ def check[T: (pl.DataFrame, pl.LazyFrame)](
             prop=pl.col("value").filter(pl.col("value") == fill_flag).count()
             / pl.count(),
         )
+        .sort("column")
     )
 
 

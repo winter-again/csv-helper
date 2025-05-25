@@ -1,9 +1,5 @@
 .venv/
-/data/
 __pycache__/
-.pdm-python
 dist/
 sdist/
-test.py
-scratch.py
-co-est2023-alldata.csv
+/data/
