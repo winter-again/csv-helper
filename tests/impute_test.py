@@ -1,3 +1,4 @@
+import textwrap
 from io import StringIO
 
 import polars as pl
@@ -9,7 +10,7 @@ from csv_helper import impute
 
 @pytest.fixture
 def df_inp() -> pl.DataFrame:
-    data = """
+    data = """\
     id,numerator,denominator,imp_num,imp_denom
     A,10,15,false,false
     A,<=5,<=5,true,true
@@ -43,7 +44,7 @@ def df_inp() -> pl.DataFrame:
     D,<=5,<=5,true,true
     """
     df = pl.read_csv(
-        StringIO(data),
+        StringIO(textwrap.dedent(data)),
         schema={
             "id": pl.String,
             "numerator": pl.String,
@@ -58,7 +59,7 @@ def df_inp() -> pl.DataFrame:
 
 @pytest.fixture
 def lf_inp() -> pl.LazyFrame:
-    data = """
+    data = """\
     id,numerator,denominator,imp_num,imp_denom
     A,10,15,false,false
     A,<=5,<=5,true,true
@@ -92,7 +93,7 @@ def lf_inp() -> pl.LazyFrame:
     D,<=5,<=5,true,true
     """
     lf = pl.scan_csv(
-        StringIO(data),
+        StringIO(textwrap.dedent(data)),
         schema={
             "id": pl.String,
             "numerator": pl.String,
