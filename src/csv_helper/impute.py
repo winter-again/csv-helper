@@ -13,7 +13,7 @@ def check[T: (pl.DataFrame, pl.LazyFrame)](
     the given columns.
     """
     for col in columns:
-        if col not in df.columns:
+        if col not in df.lazy().collect_schema().names():
             raise ValueError(f"Column {col} doesn't exist")
 
         if not _fill_flag_exists(df, col, fill_flag):
@@ -66,7 +66,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
     to that Polars type. Only supports Polars integer and float types.
     """
     for col in columns:
-        if col not in df.columns:
+        if col not in df.lazy().collect_schema().names():
             raise ValueError(f"Column {col} doesn't exist")
 
         if not _fill_flag_exists(df, col, fill_flag):
@@ -160,10 +160,10 @@ def column_pair[T: (pl.DataFrame, pl.LazyFrame)](
     behavior for the numerator when denominator is less than or equal to the
     `fill_range` upper bound since such imputation happens per-row.
     """
-    if numerator not in df.columns:
+    if numerator not in df.lazy().collect_schema().names():
         raise ValueError(f"Column {numerator} doesn't exist")
 
-    if denominator not in df.columns:
+    if denominator not in df.lazy().collect_schema().names():
         raise ValueError(f"Column {numerator} doesn't exist")
 
     if not _fill_flag_exists(df, numerator, fill_flag):
