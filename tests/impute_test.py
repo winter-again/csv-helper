@@ -1,57 +1,138 @@
+from io import StringIO
+
 import polars as pl
+import pytest
+from polars.testing import assert_frame_equal, assert_frame_not_equal
 
 from csv_helper import impute
 
-# TODO: make reusable
-df_inp = pl.DataFrame(
-    {
-        "id": ["A", "A", "A", "B", "B", "C", "C", "A", "A", "A", "D", "D"],
-        "count": [
-            "10",
-            "15",
-            "<=5",
-            "<=5",
-            "12",
-            "50",
-            "<=5",
-            "10",
-            "15",
-            "<=5",
-            "<=5",
-            "<=5",
-        ],
-        "count_2": [
-            "15",
-            "10",
-            "<=5",
-            "12",
-            "<=5",
-            "<=5",
-            "10",
-            "50",
-            "<=5",
-            "<=5",
-            "15",
-            "<=5",
-        ],
-    }
-)
 
-# TODO: test values are <= 5
-# TODO: test with seed?
+@pytest.fixture
+def df_inp() -> pl.DataFrame:
+    data = """
+    id,numerator,denominator,imp_num,imp_denom
+    A,10,15,false,false
+    A,<=5,<=5,true,true
+    A,12,23,false,false
+    B,<=5,<=5,true,true
+    A,22,24,false,false
+    B,<=5,13,true,false
+    B,<=5,<=5,true,true
+    A,10,15,false,false
+    C,<=5,<=5,false,true
+    C,<=5,<=5,true,true
+    A,<=5,<=5,true,true
+    A,22,15,false,false
+    B,<=5,13,true,false
+    A,<=5,<=5,false,true
+    C,100,128,false,false
+    C,<=5,<=5,true,true
+    D,<=5,<=5,true,true
+    A,22,23,false,false
+    B,<=5,18,true,false
+    H,8,17,false,false
+    A,10,16,false,false
+    A,<=5,<=5,true,true
+    H,<=5,<=5,true,true
+    A,22,88,false,false
+    B,<=5,23,true,false
+    C,<=5,<=5,true,true
+    A,<=5,<=5,false,true
+    C,100,1300,false,false
+    C,<=5,<=5,true,true
+    D,<=5,<=5,true,true
+    """
+    df = pl.read_csv(
+        StringIO(data),
+        schema={
+            "id": pl.String,
+            "numerator": pl.String,
+            "denominator": pl.String,
+            "imp_num": pl.Boolean,
+            "imp_denom": pl.Boolean,
+        },
+    )
+
+    return df
 
 
-def test_impute_columns_single() -> None:
-    df = df_inp.pipe(impute.columns, ["count"], "<=5", (1, 5))
+def test_impute_columns_single(df_inp: pl.DataFrame) -> None:
+    df_out = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
 
-    assert df.select((pl.col("count").cast(pl.String) == "<=5").any()).item() is False
+    assert df_inp.shape == df_out.shape
+    assert (
+        df_out.select((pl.col("numerator").cast(pl.String) == "<=5").any()).item()
+        is False
+    )
+    assert (
+        df_out.filter(pl.col("imp_num")).select((pl.col("numerator") <= 5).all()).item()
+        is True
+    )
 
 
-def test_impute_pair() -> None:
-    df = df_inp.pipe(impute.column_pair, "count", "count_2", "<=5", (1, 5))
+def test_impute_columns_multi(df_inp: pl.DataFrame) -> None:
+    df_out = df_inp.pipe(impute.columns, ["numerator", "denominator"], "<=5", (1, 5))
+
+    assert df_inp.shape == df_out.shape
+    assert (
+        df_out.select((pl.col("numerator").cast(pl.String) == "<=5").any()).item()
+        is False
+    )
+    assert (
+        df_out.select((pl.col("denominator").cast(pl.String) == "<=5").any()).item()
+        is False
+    )
 
     assert (
-        df.select((pl.col("count").cast(pl.String) == "<=5").any()).item() is False
-        and df.select((pl.col("count_2").cast(pl.String) == "<=5").any()).item()
+        df_out.filter(pl.col("imp_num")).select((pl.col("numerator") <= 5).all()).item()
+        is True
+    )
+    assert (
+        df_out.filter(pl.col("imp_denom"))
+        .select((pl.col("denominator") <= 5).all())
+        .item()
+        is True
+    )
+
+
+def test_impute_columns_seed(df_inp: pl.DataFrame) -> None:
+    df_1 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
+    df_2 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
+
+    assert df_1.shape == df_2.shape
+    assert_frame_not_equal(df_1, df_2)
+
+    df_1 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=18)
+    df_2 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=18)
+
+    assert df_1.shape == df_2.shape
+    assert_frame_equal(df_1, df_2)
+
+
+def test_impute_pair(df_inp: pl.DataFrame) -> None:
+    df_out = df_inp.pipe(impute.column_pair, "numerator", "denominator", "<=5", (1, 5))
+
+    assert df_inp.shape == df_out.shape
+    assert (
+        df_out.select((pl.col("numerator").cast(pl.String) == "<=5").any()).item()
         is False
+        and df_out.select((pl.col("denominator").cast(pl.String) == "<=5").any()).item()
+        is False
+    )
+    assert (
+        df_out.filter(pl.col("imp_num")).select((pl.col("numerator") <= 5).all()).item()
+        is True
+    )
+    assert (
+        df_out.filter(pl.col("imp_denom"))
+        .select((pl.col("denominator") <= 5).all())
+        .item()
+        is True
+    )
+
+    assert (
+        df_out.filter(pl.col("imp_denom"))
+        .select((pl.col("numerator") <= pl.col("denominator")).all())
+        .item()
+        is True
     )
