@@ -1,6 +1,6 @@
 [project]
 name = "csv-helper"
-version = "0.2.3"
+version = "0.3.0"
 description = "A simple library and CLI for working with CSV data"
 readme = "README.md"
 authors = [{ name = "Andrew Tiu", email = "andrew.tiu88@gmail.com" }]

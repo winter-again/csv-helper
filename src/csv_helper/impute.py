@@ -18,7 +18,7 @@ def check[T: (pl.DataFrame, pl.LazyFrame)](
 
         if not _fill_flag_exists(df, col, fill_flag):
             raise ValueError(
-                f"Column {col} doesn't contain any instances of '{fill_flag}'"
+                f"Column '{col}' doesn't contain any instances of '{fill_flag}'"
             )
 
     if len(columns) > 1:
@@ -29,7 +29,7 @@ def check[T: (pl.DataFrame, pl.LazyFrame)](
             .agg(
                 count=pl.col("value").filter(pl.col("value") == fill_flag).count(),
                 prop=pl.col("value").filter(pl.col("value") == fill_flag).count()
-                / pl.count(),
+                / pl.len(),
             )
             .sort("column")
         )
@@ -43,7 +43,7 @@ def check[T: (pl.DataFrame, pl.LazyFrame)](
         .agg(
             count=pl.col("value").filter(pl.col("value") == fill_flag).count(),
             prop=pl.col("value").filter(pl.col("value") == fill_flag).count()
-            / pl.count(),
+            / pl.len(),
         )
         .sort("column")
     )
