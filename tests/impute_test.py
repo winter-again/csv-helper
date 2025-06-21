@@ -10,6 +10,7 @@ from csv_helper import impute
 
 @pytest.fixture
 def df_inp() -> pl.DataFrame:
+    # NOTE: imp_num and imp_denom independently denote whether col needs imputation
     data = """\
     id,numerator,denominator,imp_num,imp_denom
     A,10,15,false,false
@@ -58,52 +59,8 @@ def df_inp() -> pl.DataFrame:
 
 
 @pytest.fixture
-def lf_inp() -> pl.LazyFrame:
-    data = """\
-    id,numerator,denominator,imp_num,imp_denom
-    A,10,15,false,false
-    A,<=5,<=5,true,true
-    A,12,23,false,false
-    B,<=5,<=5,true,true
-    A,22,24,false,false
-    B,<=5,13,true,false
-    B,<=5,<=5,true,true
-    A,10,15,false,false
-    C,<=5,<=5,false,true
-    C,<=5,<=5,true,true
-    A,<=5,<=5,true,true
-    A,22,15,false,false
-    B,<=5,13,true,false
-    A,<=5,<=5,false,true
-    C,100,128,false,false
-    C,<=5,<=5,true,true
-    D,<=5,<=5,true,true
-    A,22,23,false,false
-    B,<=5,18,true,false
-    H,8,17,false,false
-    A,10,16,false,false
-    A,<=5,<=5,true,true
-    H,<=5,<=5,true,true
-    A,22,88,false,false
-    B,<=5,23,true,false
-    C,<=5,<=5,true,true
-    A,<=5,<=5,false,true
-    C,100,1300,false,false
-    C,<=5,<=5,true,true
-    D,<=5,<=5,true,true
-    """
-    lf = pl.scan_csv(
-        StringIO(textwrap.dedent(data)),
-        schema={
-            "id": pl.String,
-            "numerator": pl.String,
-            "denominator": pl.String,
-            "imp_num": pl.Boolean,
-            "imp_denom": pl.Boolean,
-        },
-    )
-
-    return lf
+def lf_inp(df_inp: pl.DataFrame) -> pl.LazyFrame:
+    return df_inp.lazy()
 
 
 def test_impute_columns_single(df_inp: pl.DataFrame) -> None:
@@ -118,6 +75,11 @@ def test_impute_columns_single(df_inp: pl.DataFrame) -> None:
         df_out.filter(pl.col("imp_num")).select((pl.col("numerator") <= 5).all()).item()
         is True
     )
+
+
+def test_impute_columns_no_cols_exception(df_inp: pl.DataFrame) -> None:
+    with pytest.raises(ValueError):
+        df_inp.pipe(impute.columns, [], "<=5", (1, 5))
 
 
 def test_impute_columns_single_lazy(lf_inp: pl.LazyFrame) -> None:
@@ -198,31 +160,31 @@ def test_impute_columns_multi_lazy(lf_inp: pl.LazyFrame) -> None:
 
 
 def test_impute_columns_seed(df_inp: pl.DataFrame) -> None:
-    df_1 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
-    df_2 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
-
-    assert df_1.shape == df_2.shape
-    assert_frame_not_equal(df_1, df_2)
-
     df_1 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=18)
     df_2 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=18)
 
     assert df_1.shape == df_2.shape
     assert_frame_equal(df_1, df_2)
 
+    df_1 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=1)
+    df_2 = df_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=10)
+
+    assert df_1.shape == df_2.shape
+    assert_frame_not_equal(df_1, df_2)
+
 
 def test_impute_columns_seed_lazy(lf_inp: pl.LazyFrame) -> None:
-    lf_1 = lf_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
-    lf_2 = lf_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5))
-
-    assert lf_1.collect().shape == lf_2.collect().shape
-    assert_frame_not_equal(lf_1, lf_2)
-
     lf_1 = lf_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=18)
     lf_2 = lf_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=18)
 
     assert lf_1.collect().shape == lf_2.collect().shape
     assert_frame_equal(lf_1, lf_2)
+
+    lf_1 = lf_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=1)
+    lf_2 = lf_inp.pipe(impute.columns, ["numerator"], "<=5", (1, 5), seed=10)
+
+    assert lf_1.collect().shape == lf_2.collect().shape
+    assert_frame_not_equal(lf_1, lf_2)
 
 
 def test_impute_pair(df_inp: pl.DataFrame) -> None:
@@ -252,6 +214,60 @@ def test_impute_pair(df_inp: pl.DataFrame) -> None:
         .item()
         is True
     )
+
+
+def test_impute_pair_seed(df_inp: pl.DataFrame) -> None:
+    df_1 = df_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=18
+    )
+    df_2 = df_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=18
+    )
+
+    assert df_1.shape == df_2.shape
+    # can only guarantee seed reproducibility in these 2 cases
+    assert_frame_equal(df_1.select("denominator"), df_2.select("denominator"))
+    assert_frame_equal(
+        df_1.filter(pl.col("denominator") > 5).select("numerator"),
+        df_2.filter(pl.col("denominator") > 5).select("numerator"),
+    )
+
+    df_1 = df_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=1
+    )
+    df_2 = df_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=10
+    )
+
+    assert df_1.shape == df_2.shape
+    assert_frame_not_equal(df_1, df_2)
+
+
+def test_impute_pair_seed_lazy(lf_inp: pl.LazyFrame) -> None:
+    lf_1 = lf_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=18
+    )
+    lf_2 = lf_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=18
+    )
+
+    assert lf_1.collect().shape == lf_2.collect().shape
+    # can only guarantee seed reproducibility in these 2 cases
+    assert_frame_equal(lf_1.select("denominator"), lf_2.select("denominator"))
+    assert_frame_equal(
+        lf_1.filter(pl.col("denominator") > 5).select("numerator"),
+        lf_2.filter(pl.col("denominator") > 5).select("numerator"),
+    )
+
+    lf_1 = lf_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=1
+    )
+    lf_2 = lf_inp.pipe(
+        impute.column_pair, "numerator", "denominator", "<=5", (1, 5), seed=10
+    )
+
+    assert lf_1.collect().shape == lf_2.collect().shape
+    assert_frame_not_equal(lf_1, lf_2)
 
 
 def test_impute_pair_lazy(lf_inp: pl.LazyFrame) -> None:
