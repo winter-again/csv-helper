@@ -5,14 +5,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 import click
-import numpy as np
 import polars as pl
 import typer
-from numpy.random import Generator
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
-from rich.table import Table
 from typing_extensions import Annotated
 
 from . import impute
@@ -25,13 +22,11 @@ console = Console()
 err_console = Console(stderr=True)
 
 
-def print_version(val: bool):
+def version_callback(value: bool):
     """Print CLI version"""
-    if not val:
-        return
-
-    print(f"csv-helper version {version('csv_helper')}")
-    raise typer.Exit()
+    if value:
+        print(f"csv-helper version {version(__package__)}")  # pyright: ignore[reportArgumentType]
+        raise typer.Exit()
 
 
 @app.callback()
@@ -42,14 +37,14 @@ def callback(
         "-v",
         is_eager=True,
         help="Print the version and exit.",
-        callback=print_version,
+        callback=version_callback,
     ),
 ) -> None:
     pass
 
 
 @app.command()
-def preview(
+def show(
     input: Annotated[
         Path,
         typer.Argument(
@@ -57,19 +52,18 @@ def preview(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="The CSV file to preview",
+            help="Target CSV file",
         ),
     ],
     n_rows: Annotated[
-        int, typer.Option("--nrows", "-n", min=1, help="Number of rows to preview")
+        int, typer.Option("--nrows", "-n", min=1, help="Number of rows to show")
     ] = 10,
 ) -> None:
     """
-    Preview a given CSV file.
+    Show preview of a given CSV file.
     """
     df = pl.read_csv(input, infer_schema_length=0)
 
-    print(f"File: {input}")
     if n_rows > df.height:
         print(df)
     else:
@@ -107,7 +101,13 @@ def check(
     """
     df = pl.read_csv(input, infer_schema_length=0)
 
-    print(impute.check(df, columns, fill_flag))
+    try:
+        out = impute.check(df, columns, fill_flag)
+    except ValueError as e:
+        if f"doesn't contain any instances of '{fill_flag}'" in str(e):
+            print(e)
+    else:
+        print(out)
 
 
 class FillRange(NamedTuple):
@@ -139,7 +139,7 @@ def validate_inp_out(input: Path, output: Path, force: bool) -> None:
             f"[blue bold]{output}[/blue bold] already exists. Do you want to overwrite it?"
         )
         if not overwrite_file:
-            print("Won't overwrite")
+            err_console.print("Won't overwrite")
             raise typer.Abort()
 
     if input == output and not force:
@@ -155,9 +155,10 @@ def check_create_dir(output: Path) -> bool:
             f"The specified output's parent directory [blue bold]{output.parent}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
         )
         if not create_dir:
-            print("Won't create directories")
-            raise typer.Abort()
+            return False
+
         return True
+
     return False
 
 
@@ -165,12 +166,14 @@ def all_cols_exist(df: pl.DataFrame, fill_cols: list[str]) -> bool:
     for col in fill_cols:
         if col not in df.columns:
             return False
+
     return True
 
 
 def fill_flag_exists(df: pl.DataFrame, fill_col: str, fill_flag: str) -> bool:
     if df.select((pl.col(fill_col) == fill_flag).any()).item():
         return True
+
     return False
 
 
@@ -199,7 +202,7 @@ def impute_file(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="Path to target CSV file",
+            help="Target CSV file",
         ),
     ],
     columns: Annotated[
@@ -207,7 +210,7 @@ def impute_file(
         typer.Option(
             "--col",
             "-c",
-            help="Name of a column to impute. Specify this for each colum you wanted imputed.",
+            help="Name of column to impute. Specify this for each colum you wanted imputed.",
         ),
     ],
     fill_flag: Annotated[
@@ -230,16 +233,17 @@ def impute_file(
     ],
     output: Annotated[
         Path | None,
-        # NOTE: if exists = False, other checks still run if the Path happens to (file/dir) exist
         typer.Option(
             "--out",
             "-o",
+            # NOTE: if exists=False, file/directory doesn't need to exist;
+            # if doesn't exist, other checks skipped
             exists=False,
             file_okay=True,
             dir_okay=False,
             writable=True,
             readable=False,
-            help="Path to save the imputed CSV file. If not specified, defaults to printing result to stdout",
+            help="Path to save the imputed CSV file. If not specified, defaults to printing result to stdout.",
         ),
     ] = None,
     col_type: Annotated[
@@ -247,7 +251,7 @@ def impute_file(
         typer.Option(
             "--type",
             "-t",
-            help="Intended data type of the target column. Can be a Polars Int64 or Float64.",
+            help="Intended data type of the target column. Can be a Polars int or float type.",
             click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
     ] = ColType.INT64.name,
@@ -284,6 +288,10 @@ def impute_file(
         validate_inp_out(input, output, force)
         create_dir = check_create_dir(output)
 
+        if not output.parent.is_dir() and not create_dir:
+            err_console.print("Won't create directories")
+            raise typer.Abort()
+
     df = pl.read_csv(input, infer_schema_length=0)
 
     with Progress(
@@ -303,17 +311,13 @@ def impute_file(
             if create_dir:
                 output.parent.mkdir(parents=True)
 
-            df.write_csv(output)
-
-    console.print("[green]Finished imputing[/green]...")
+            df.write_csv(output, separator=",")
 
     if verbose:
-        console.print(f"\n[bold]Time taken[/bold]: {(t1 - t0):0.3f}s", highlight=False)
-        console.print("[bold]Preview of result:[/bold]")
-        console.print(
-            df.filter(pl.col(col) <= fill_range.ub for col in columns).head(),
-            highlight=False,
-        )
+        console.print(f"[bold]Time taken[/bold]: {(t1 - t0):0.3f}s", highlight=False)
+
+    if output is None:
+        print(df.head(10))
 
 
 class FillCols(NamedTuple):
@@ -333,16 +337,6 @@ def parse_sep_cols(sep_cols: str) -> list[str]:
     return [col.strip() for col in sep_cols.split(",")]
 
 
-def impute_capped(denom: int, fill_range: FillRange, rng: Generator) -> int:
-    """
-    Return a random integer from a range that is capped
-    at the 'denominator' value
-    """
-    # WARN: specifying size=1 instead of leaving size = None
-    # will return single-value list instead of just the value
-    return rng.integers(fill_range.lb, denom, endpoint=True)
-
-
 @impute_app.command("pair")
 def impute_pair(
     input: Annotated[
@@ -352,34 +346,20 @@ def impute_pair(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="Path to target CSV file",
+            help="Target CSV file",
         ),
     ],
-    output: Annotated[
-        Path,
-        typer.Argument(
-            exists=False,
-            file_okay=True,
-            dir_okay=False,
-            writable=True,
-            readable=False,
-            help="Path to save the output CSV file",
-        ),
+    numerator: Annotated[
+        str, typer.Option("--numerator", "-n", help="Numerator in the pair imputation")
     ],
-    fill_cols: Annotated[
-        FillCols,
-        typer.Option(
-            "--cols",
-            "-c",
-            metavar="TEXT",
-            help="Pair of columns (numerator and denominator) to be imputed. Specify as comma-separated values. For example, 'count_col,denom_col' specifies 'count_col' as the numerator and 'denom_col' as the denominator.",
-            parser=parse_fill_cols,
-        ),
+    denominator: Annotated[
+        str,
+        typer.Option("--denominator", "-d", help="Denominator in the pair imputation"),
     ],
     fill_flag: Annotated[
         str,
         typer.Option(
-            "--flag", "-f", help="Flag (string) to look for and replace in the columns"
+            "--flag", "-f", help="Flag/marker to find and replace in the target columns"
         ),
     ],
     fill_range: Annotated[
@@ -388,22 +368,35 @@ def impute_pair(
             "--range",
             "-r",
             metavar="TEXT",
-            help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
+            help='Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: "1,5" corresponds to the range [1, 5]',
             parser=parse_fill_range,
         ),
     ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            "-o",
+            exists=False,
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+            readable=False,
+            help="Path to save the imputed CSV file. If not specified, defaults to printing result to stdout.",
+        ),
+    ] = None,
     col_type: Annotated[
         str,
         typer.Option(
             "--type",
             "-t",
-            help="Intended data type of target columns. Can be a Polars Int64 or Float64.",
+            help="Intended data type of target columns. Can be a Polars int or float type.",
             click_type=click.Choice(ColType._member_names_, case_sensitive=False),
         ),
     ] = ColType.INT64.name,
     seed: Annotated[
-        int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
-    ] = 123,
+        int | None, typer.Option("--seed", "-s", help="Random seed for reproducibility")
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -418,9 +411,9 @@ def impute_pair(
             "--force",
             "-F",
             help="""
-            Allow overwriting data even if (1) the specified output file already exists,
-            (2) the path to the input file is identical to the path of the output file, or
-            (3) --sep-out is specfied and that file already exists. All checks will be ignored.
+            Allow overwriting data even if (1) the specified output file already exists or
+            (2) the path to the input file is identical to the path of the output file. Both
+            checks will be ignored.
             """,
         ),
     ] = False,
@@ -433,20 +426,16 @@ def impute_pair(
             dir_okay=False,
             readable=True,
             help="""
-            Path to some separate CSV file in which to look for denominator data.
-            Currently only supports a separate file that has the exact same
-            structure as the input file except for the numerator column being
-            swapped for the denominator column (because this performs an inner
-            join on all those columns).
+            Path to a separate CSV file in which to look for denominator column. Will perform an
+            inner join between the input file and this file containing the denominator.
             """,
         ),
     ] = None,
     sep_cols: Annotated[
         list[str] | None,
         typer.Option(
-            "--sep-cols",
-            help="Comma-separated list of column names on which to join the numerator and denominator data",
-            parser=parse_sep_cols,
+            "--sep-col",
+            help="Name of column on which to join the numerator and denominator data. Specify for each column to be used.",
         ),
     ] = None,
     sep_out: Annotated[
@@ -458,10 +447,11 @@ def impute_pair(
             dir_okay=False,
             writable=True,
             readable=False,
-            help="Path to save imputed denominator data from --sep-denom",
+            help="Path to save imputed version of the separate denominator file",
         ),
     ] = None,
 ):
+    # TODO: review
     """
     Impute a pair of columns in a CSV file. Will look for the
     flag in both of the specified columns and substitute with a random
@@ -479,50 +469,53 @@ def impute_pair(
     to specify where to save the imputed version of the denominator data from
     --sep-denom.
     """
-    validate_inp_out(input, output, force)
-    create_dir = check_create_dir(output)
+    create_dir = False
+    if output is not None:
+        validate_inp_out(input, output, force)
+        create_dir = check_create_dir(output)
 
-    if (sep_cols is not None or sep_out is not None) and sep_denom is None:
+    create_sep_dir = False
+    if sep_out is not None:
+        create_sep_dir = check_create_dir(sep_out)
+
+    if sep_denom is None and (sep_cols is not None or sep_out is not None):
         err_console.print("Must specify --sep-denom to use --sep-cols or --sep-out")
+        raise typer.Abort()
+
+    if sep_denom is not None and sep_cols is None:
+        err_console.print("Must specify --sep-cols if using --sep-denom")
         raise typer.Abort()
 
     df = pl.read_csv(input, infer_schema_length=0)
 
-    if sep_denom is not None:
-        if sep_cols is None:
-            err_console.print("You must specify both --sep-denom and --sep-cols")
+    if sep_denom is None:
+        if numerator not in df.columns or denominator not in df.columns:
+            err_console.print("Invalid numerator or denominator column specified")
             raise typer.Abort()
-
+    else:
         # NOTE: extract since it gives nested list; maybe some type coercion going on
-        sep_cols = sep_cols[0]
+        # sep_cols = sep_cols[0]
         df_denom = pl.read_csv(sep_denom, infer_schema_length=0)
 
-        if (
-            fill_cols.numerator not in df.columns
-            or fill_cols.denominator not in df_denom.columns
+        if numerator not in df.columns or denominator not in df_denom.columns:
+            err_console.print("Invalid numerator or denominator column specified")
+            raise typer.Abort()
+
+        if sep_cols is not None and (
+            not all_cols_exist(df, sep_cols) or not all_cols_exist(df_denom, sep_cols)
         ):
-            err_console.print("Invalid columns specified for --cols")
-            raise typer.Abort()
-
-        if not all_cols_exist(df, sep_cols) or not all_cols_exist(df_denom, sep_cols):
             err_console.print(
-                "Some of the --sep-cols are missing from the numerator or denominator data"
-            )
-            raise typer.Abort()
-
-        # TODO: might need more sophisticated checks here to ensure the join goes ok or fails gracefully
-        if fill_cols.denominator not in df_denom.columns:
-            err_console.print(
-                "Separate denominator data doesn't contain the given denominator column"
+                "Some of the --sep-col columns are missing from the numerator or denominator data"
             )
             raise typer.Abort()
 
         if sep_out is not None:
-            if not fill_flag_exists(df_denom, fill_cols.denominator, fill_flag):
+            # TODO: needed?
+            if not fill_flag_exists(df_denom, denominator, fill_flag):
                 print(
                     f"""
                     The denominator file {sep_denom} doesn't contain any instancees of {fill_flag}
-                    in {fill_cols.denominator}. Rerun the command without specifying --sep-out.
+                    in {denominator}. Rerun the command without specifying --sep-out.
                     """
                 )
                 raise typer.Abort()
@@ -535,26 +528,6 @@ def impute_pair(
                     print("Won't overwrite")
                     raise typer.Abort()
 
-        imp_sizes = (
-            len(df.filter(pl.col(fill_cols.numerator) == fill_flag)),
-            len(df_denom.filter(pl.col(fill_cols.denominator) == fill_flag)),
-        )
-    else:
-        if not all_cols_exist(df, list(fill_cols)):
-            err_console.print("Invalid columns specified for --cols")
-            raise typer.Abort()
-
-        imp_sizes = (
-            len(df.filter(pl.col(fill_cols.numerator) == fill_flag)),
-            len(df.filter(pl.col(fill_cols.denominator) == fill_flag)),
-        )
-
-    if imp_sizes[0] == 0 and imp_sizes[1] == 0:
-        err_console.print(
-            f"Cannot find any instances of {fill_flag} in either {fill_cols.numerator} or {fill_cols.denominator}"
-        )
-        raise typer.Abort()
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -562,298 +535,67 @@ def impute_pair(
     ) as progress:
         progress.add_task(description="Imputing...", total=None)
 
-        rng = np.random.default_rng(seed)
-        cast_type = ColType[col_type]
-
-        t0 = time.perf_counter()
-        # NOTE: impute df_denom before attempting join
-        if sep_denom is not None:
-            df_denom = df_denom.with_columns(
-                pl.when(pl.col(fill_cols.denominator) == fill_flag)
-                .then(
-                    pl.lit(
-                        rng.integers(
-                            fill_range.lb,
-                            fill_range.ub,
-                            size=df_denom.height,
-                            endpoint=True,
-                        )
-                    )
-                )
-                .otherwise(pl.col(fill_cols.denominator))
-                .alias(fill_cols.denominator)
-                .cast(cast_type.value)
+        if sep_denom is None:
+            t0 = time.perf_counter()
+            df = impute.column_pair(
+                df,
+                numerator,
+                denominator,
+                fill_flag,
+                fill_range,
+                ColType[col_type].value,
+                seed,
             )
-
-            # NOTE: `validate` default is "m:m" -> forcing a 1:1 relationship of the join
+            t1 = time.perf_counter()
+        else:
+            t0 = time.perf_counter()
             try:
                 df = df.join(
                     df_denom, on=sep_cols, how="inner", coalesce=True, validate="1:1"
                 )
             except pl.exceptions.ComputeError:
                 err_console.print(
-                    "The join with --sep-denom failed because there is not a 1:1 relationship between the join keys."
+                    "The join with --sep-denom failed because there is not a 1:1 relationship between the join columns specified via --sep-col."
                 )
                 raise typer.Abort()
-        else:
-            df = df.with_columns(
-                pl.when(pl.col(fill_cols.denominator) == fill_flag)
-                .then(
-                    pl.lit(
-                        rng.integers(
-                            fill_range.lb, fill_range.ub, size=df.height, endpoint=True
-                        )
+
+            df = impute.column_pair(
+                df,
+                numerator,
+                denominator,
+                fill_flag,
+                fill_range,
+                ColType[col_type].value,
+                seed,
+            )
+            t1 = time.perf_counter()
+
+        if output is not None:
+            if create_dir:
+                output.parent.mkdir(parents=True)
+
+            if sep_denom is not None:
+                df.select(pl.col("*").exclude(denominator)).write_csv(
+                    output, separator=","
+                )
+
+                if sep_out is not None:
+                    if create_sep_dir:
+                        sep_out.parent.mkdir(parents=True)
+
+                    df.select(pl.col("*").exclude(numerator)).write_csv(
+                        sep_out, separator=","
                     )
-                )
-                .otherwise(pl.col(fill_cols.denominator))
-                .alias(fill_cols.denominator)
-                .cast(cast_type.value)
-            )
-
-        # NOTE: at this point, imputation of denom is done regardless of whether sep file or not
-        df = df.with_columns(
-            pl.when(
-                (pl.col(fill_cols.numerator) == fill_flag)
-                & (pl.col(fill_cols.denominator) <= fill_range.ub)
-            )
-            # map_elements() will run Python so it's slow
-            .then(
-                pl.col(fill_cols.denominator).map_elements(
-                    lambda denom: impute_capped(
-                        denom,
-                        fill_range,
-                        rng,
-                    ),
-                    return_dtype=pl.Int64,
-                )
-            )
-            .when(
-                (pl.col(fill_cols.numerator) == fill_flag)
-                & (pl.col(fill_cols.denominator) > fill_range.ub)
-            )
-            .then(
-                pl.lit(
-                    rng.integers(
-                        fill_range.lb, fill_range.ub, size=df.height, endpoint=True
-                    )
-                )
-            )
-            .otherwise(pl.col(fill_cols.numerator))
-            .alias(fill_cols.numerator)
-            .cast(cast_type.value)
-        )
-        t1 = time.perf_counter()
-
-        # TODO: consider create_dir also for sep_out?
-        if create_dir:
-            output.parent.mkdir(parents=True)
-
-        if sep_denom is not None:
-            if sep_out is not None:
-                df.select(pl.col("*").exclude(fill_cols.numerator)).write_csv(sep_out)
-
-            df.select(pl.col("*").exclude(fill_cols.denominator)).write_csv(output)
-        else:
-            df.write_csv(output)
-
-    print("[green]Finished imputing[/green]...")
+            else:
+                df.write_csv(output, separator=",")
 
     if verbose:
-        table = Table(title="Imputation statistics", show_header=False)
-        table.add_row(
-            f"[blue]Count of imputed values in[/blue] '{fill_cols.numerator}'",
-            f"{imp_sizes[0]:_}",
-        )
-        table.add_row(
-            f"[blue]Proportion of imputed values in[/blue] '{fill_cols.numerator}'",
-            f"{(imp_sizes[0] / df.height):0.2f} (n = {df.height:_})",
-            end_section=True,
-        )
-        table.add_row(
-            f"[blue]Count of imputed values in[/blue] '{fill_cols.denominator}'",
-            f"{imp_sizes[1]:_}",
-        )
-        table.add_row(
-            f"[blue]Proportion of imputed values in[/blue] '{fill_cols.denominator}'",
-            f"{(imp_sizes[1] / df.height):0.2f} (n = {df.height:_})",
-            end_section=True,
-        )
-        table.add_row("[blue]Seed[/blue]", f"{seed}")
-        table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
-        print(table)
+        console.print(f"[bold]Time taken[/bold]: {(t1 - t0):0.3f}s", highlight=False)
 
+    if output is None:
         print(
             df.filter(
-                (pl.col(fill_cols.numerator) <= fill_range.ub)
-                | (pl.col(fill_cols.denominator) <= fill_range.ub)
-            ).head()
+                (pl.col(numerator) <= fill_range.ub)
+                | (pl.col(denominator) <= fill_range.ub)
+            ).head(10)
         )
-
-
-@impute_app.command("dir")
-def impute_dir(
-    input_dir: Annotated[
-        Path,
-        typer.Argument(
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-            help="Directory of CSV files to impute",
-        ),
-    ],
-    output_dir: Annotated[
-        Path,
-        typer.Argument(
-            exists=False,
-            file_okay=False,
-            dir_okay=True,
-            writable=True,
-            help="Directory to save output CSV files",
-        ),
-    ],
-    fill_col: Annotated[
-        str, typer.Option("--col", "-c", help="Name of the column to impute")
-    ],
-    fill_flag: Annotated[
-        str,
-        typer.Option(
-            "--flag",
-            "-f",
-            help="Flag (string) to look for and replace in the target column",
-        ),
-    ],
-    fill_range: Annotated[
-        FillRange,
-        typer.Option(
-            "--range",
-            "-r",
-            metavar="TEXT",
-            help="Closed, integer interval from which to sample random integer for imputation. Specify as comma-separated values. For example: '1,5' corresponds to the range [1, 5]",
-            parser=parse_fill_range,
-        ),
-    ],
-    col_type: Annotated[
-        str,
-        typer.Option(
-            "--type",
-            "-t",
-            help="Intended data type of the target column. Can be a Polars Int64 or Float64.",
-            click_type=click.Choice(ColType._member_names_, case_sensitive=False),
-        ),
-    ] = ColType.INT64.name,
-    seed: Annotated[
-        int, typer.Option("--seed", "-s", help="Random seed for reproducibility")
-    ] = 123,
-    force: Annotated[
-        bool,
-        typer.Option(
-            "--force",
-            "-F",
-            help="Force imputing the data if INPUT is identical to OUTPUT",
-        ),
-    ] = False,
-    suffix: Annotated[
-        str,
-        typer.Option(
-            "--suffix", "-x", help="Optional suffix to append to each imputed CSV file"
-        ),
-    ] = "",
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose",
-            "-v",
-            help="Whether to show additional imputation summary information",
-        ),
-    ] = False,
-) -> None:
-    """
-    Impute a target column for a directory of uniform CSV files. Will look for a specific filler flag in the target column
-    and replace with a random integer from the the specified range. Save the result in the given output directory.
-    """
-    files = list(input_dir.glob("*.csv"))
-    if len(files) == 0:
-        err_console.print(
-            f"The specified input directory [blue bold]{input_dir}[/blue bold] is either empty or doesn't contain any CSV files."
-        )
-        raise typer.Abort()
-
-    create_dir = False
-    if not output_dir.is_dir():
-        create_dir = Confirm.ask(
-            f"The specified output directory [blue bold]{output_dir}[/blue bold] doesn't exist. Do you want to create it along with any missing parents?"
-        )
-        if not create_dir:
-            print("Won't create directories")
-            raise typer.Abort()
-
-    for file in files:
-        if suffix != "":
-            output_file = output_dir / f"{file.stem}_{suffix}{file.suffix}"
-        else:
-            output_file = output_dir / file.name
-
-        if output_file.is_file() and not force:
-            overwrite_file = Confirm.ask(
-                f"The intended output file [blue bold]{output_file}[/blue bold] already exists. Should it be overwritten?"
-            )
-            if not overwrite_file:
-                print("Won't overwrite")
-                raise typer.Abort()
-
-        df = pl.read_csv(file, infer_schema_length=0)
-
-        if not all_cols_exist(df, [fill_col]):
-            err_console.print(f"Column {fill_col} cannot be found in {file}")
-            raise typer.Abort()
-
-        if verbose:
-            imp_size = len(df.filter(pl.col(fill_col) == fill_flag))
-
-        if not fill_flag_exists(df, fill_col, fill_flag):
-            err_console.print(
-                f"Cannot find any instances of '{fill_flag}' in {fill_col}"
-            )
-            raise typer.Abort()
-
-        rng = np.random.default_rng(seed)
-        cast_type = ColType[col_type]
-
-        t0 = time.perf_counter()
-        df = df.with_columns(
-            pl.when(pl.col(fill_col) == fill_flag)
-            .then(
-                pl.lit(
-                    # NOTE: must specify size to be height of df despite not filling every row
-                    # thus, we get "new" rand int per row
-                    rng.integers(
-                        fill_range.lb, fill_range.ub, size=df.height, endpoint=True
-                    )
-                )
-            )
-            .otherwise(pl.col(fill_col))
-            .alias(fill_col)
-            .cast(cast_type.value)
-        )
-        t1 = time.perf_counter()
-
-        if create_dir:
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-        df.write_csv(output_file)
-
-        print(f"\nFinished imputing [blue]{file}[/blue]...")
-
-        if verbose:
-            table = Table(title="Imputation statistics", show_header=False)
-            table.add_row("[blue]Count of imputed values[/blue]", f"{imp_size:_}")
-            table.add_row(
-                "[blue]Proportion of imputed values[/blue]",
-                f"{(imp_size / df.height):0.2f} (n = {df.height:_})",
-            )
-            table.add_row("[blue]Seed[/blue]", f"{seed}")
-            table.add_row("[blue]Time taken[/blue]", f"~{(t1 - t0):0.3f} s")
-            print(table)
-
-            print(df.filter(pl.col(fill_col) <= fill_range.ub).head())

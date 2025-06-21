@@ -1,11 +1,11 @@
 import shutil
+import textwrap
 from importlib.metadata import version
-from pathlib import Path, PureWindowsPath
-from sys import platform
-from textwrap import dedent
+from pathlib import Path
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 from typer.testing import CliRunner
 
 from csv_helper.cli import app
@@ -14,7 +14,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def test_data(tmp_path) -> Path:
+def test_data(tmp_path: Path) -> Path:
     """
     Fixture that moves test CSV data to new dir for testing and
     returns the file's path
@@ -22,11 +22,12 @@ def test_data(tmp_path) -> Path:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     shutil.copy("./tests/data/test_impute_data.csv", data_dir)
+
     return data_dir / "test_impute_data.csv"
 
 
 @pytest.fixture
-def test_data_dir(tmp_path) -> Path:
+def test_data_dir(tmp_path: Path) -> Path:
     """
     Fixture that moves test dir of CSV data to new dir for
     testing and returns the dir's path
@@ -34,11 +35,12 @@ def test_data_dir(tmp_path) -> Path:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     shutil.copytree("./tests/data/test_dir", data_dir / "test_dir")
+
     return data_dir / "test_dir"
 
 
 @pytest.fixture
-def test_data_sep(tmp_path) -> Path:
+def test_data_sep(tmp_path: Path) -> Path:
     """
     Fixture that moves test dir of pair CSV data to new dir for
     testing and returns the dir's path
@@ -46,34 +48,22 @@ def test_data_sep(tmp_path) -> Path:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     shutil.copytree("./tests/data/test_pair_sep", data_dir / "test_pair_sep")
+
     return data_dir / "test_pair_sep"
 
 
-# NOTE: can also access funcs in csv_helper.cli directly:
-# from csv_helper.cli import preview
-# preview("./tests/data/test_impute_data.csv", 10)
-
-
-def test_show_version():
+def test_print_version():
     result = runner.invoke(app, ["--version"])
     ver = version("csv_helper")
+
     assert result.stdout.replace("\n", "") == f"csv-helper version {ver}"
 
 
-def test_preview(test_data):
-    result = runner.invoke(app, ["preview", str(test_data), "-n", "15"])
+def test_show(test_data):
+    result = runner.invoke(app, ["show", str(test_data), "-n", "15"])
     assert result.exit_code == 0
 
-    if platform == "linux" or platform == "darwin":
-        msg = f"File: {test_data}"
-    elif platform == "win32":
-        msg = f"File: {PureWindowsPath(test_data)}"
-
-    # NOTE: stripping newlines and then slicing; for some reason on macos and windows
-    # the stdout has newlines inserted
-    assert result.stdout.replace("\n", "")[: len(msg)] == msg
-
-    out = dedent(
+    out = textwrap.dedent(
         """\
         shape: (15, 4)
         ┌────────┬───────────┬───────┬───────────┐
@@ -95,12 +85,13 @@ def test_preview(test_data):
         └────────┴───────────┴───────┴───────────┘
         """
     )
-    assert out in result.stdout
+
+    assert result.stdout == out
 
 
-def test_preview_not_file(tmp_path):
+def test_show_not_file(tmp_path):
     dir = tmp_path / "data"
-    result = runner.invoke(app, ["preview", str(dir), "-n", "15"])
+    result = runner.invoke(app, ["show", str(dir), "-n", "15"])
     assert result.exit_code == 2
 
 
@@ -108,23 +99,19 @@ def test_check(test_data):
     result = runner.invoke(app, ["check", str(test_data), "-c", "cases", "-f", "<=5"])
     assert result.exit_code == 0
 
-    out = dedent(
+    out = textwrap.dedent(
         """\
-        Found 308 occurrences of '<=5' in 'cases' -> 0.62 of rows (n = 500)
-        shape: (5, 4)
-        ┌────────┬───────────┬───────┬───────────┐
-        │ county ┆ year_week ┆ cases ┆ all_cause │
-        │ ---    ┆ ---       ┆ ---   ┆ ---       │
-        │ str    ┆ str       ┆ str   ┆ str       │
-        ╞════════╪═══════════╪═══════╪═══════════╡
-        │ 55107  ┆ 2020-05   ┆ <=5   ┆ 334       │
-        │ 28101  ┆ 2021-20   ┆ <=5   ┆ <=5       │
-        │ 35043  ┆ 2022-24   ┆ <=5   ┆ 5862      │
-        │ 28043  ┆ 2023-09   ┆ <=5   ┆ 811       │
-        │ 26093  ┆ 2020-42   ┆ <=5   ┆ 7606      │
-        └────────┴───────────┴───────┴───────────┘
+        shape: (1, 3)
+        ┌────────┬───────┬───────┐
+        │ column ┆ count ┆ prop  │
+        │ ---    ┆ ---   ┆ ---   │
+        │ str    ┆ u32   ┆ f64   │
+        ╞════════╪═══════╪═══════╡
+        │ cases  ┆ 308   ┆ 0.616 │
+        └────────┴───────┴───────┘
         """
     )
+
     assert result.stdout == out
 
 
@@ -144,6 +131,7 @@ def test_impute_file(tmp_path, test_data):
             "impute",
             "file",
             str(test_data),
+            "-o",
             str(out_file),
             "-c",
             "cases",
@@ -151,28 +139,19 @@ def test_impute_file(tmp_path, test_data):
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
         ],
     )
     assert result.exit_code == 0
     assert out_file.is_file() is True
 
-    df_in = (
-        pl.read_csv(test_data, infer_schema_length=0)
-        # .with_row_index(name="id")
-        # .select("id", "cases")
-    )
-    df_out = (
-        pl.read_csv(out_file, infer_schema_length=0)
-        # .with_row_index(name="id")
-        # .select("id", "cases")
-    )
+    df_in = pl.read_csv(test_data, infer_schema_length=0)
+    df_out = pl.read_csv(out_file, infer_schema_length=0)
     assert df_in.shape == df_out.shape
 
     df = df_in.join(
         df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
     ).filter(pl.col("cases") == f"<={fill_range[1]}")
+
     assert (
         df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
         is False
@@ -197,6 +176,7 @@ def test_impute_file_repro(tmp_path, test_data):
             "impute",
             "file",
             str(test_data),
+            "-o",
             str(out_file_1),
             "-c",
             "cases",
@@ -205,7 +185,7 @@ def test_impute_file_repro(tmp_path, test_data):
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
             "-s",
-            "123",
+            "88",
         ],
     )
     assert result_1.exit_code == 0
@@ -217,6 +197,7 @@ def test_impute_file_repro(tmp_path, test_data):
             "impute",
             "file",
             str(test_data),
+            "-o",
             str(out_file_2),
             "-c",
             "cases",
@@ -225,7 +206,7 @@ def test_impute_file_repro(tmp_path, test_data):
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
             "-s",
-            "123",
+            "88",
         ],
     )
     assert result_2.exit_code == 0
@@ -237,7 +218,7 @@ def test_impute_file_repro(tmp_path, test_data):
     df_2 = pl.read_csv(out_file_2, infer_schema_length=0)
     assert df_2.select((pl.col("cases") == f"<={fill_range[1]}").any()).item() is False
 
-    assert df_1.equals(df_2) is True
+    assert_frame_equal(df_1, df_2)
 
 
 def test_impute_file_output_exists(tmp_path, test_data):
@@ -254,6 +235,7 @@ def test_impute_file_output_exists(tmp_path, test_data):
             "impute",
             "file",
             str(test_data),
+            "-o",
             str(out_file),
             "-c",
             "cases",
@@ -261,8 +243,6 @@ def test_impute_file_output_exists(tmp_path, test_data):
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
         ],
     )
     assert result.exit_code == 1
@@ -282,6 +262,7 @@ def test_impute_file_overwrite(tmp_path, test_data):
             "impute",
             "file",
             str(test_data),
+            "-o",
             str(out_file),
             "-c",
             "cases",
@@ -289,208 +270,10 @@ def test_impute_file_overwrite(tmp_path, test_data):
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
         ],
         input="y\n",
     )
     assert result.exit_code == 0
-
-
-def test_impute_dir(tmp_path, test_data_dir):
-    out_dir = Path(tmp_path) / "test_impute_dir_output"
-    out_dir.mkdir()
-    fill_range = (1, 5)
-
-    result = runner.invoke(
-        app,
-        [
-            "impute",
-            "dir",
-            str(test_data_dir),
-            str(out_dir),
-            "-c",
-            "cases",
-            "-f",
-            f"<={fill_range[1]}",
-            "-r",
-            f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
-        ],
-    )
-    assert result.exit_code == 0
-    assert out_dir.is_dir()
-    for i in range(5):
-        f = out_dir / f"test_impute_data_{i}.csv"
-        assert f.is_file() is True
-
-    for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
-        df_in = (
-            pl.read_csv(input, infer_schema_length=0)
-            # .with_row_index(name="id")
-            # .select("id", "cases", "all_cause")
-        )
-        df_out = (
-            pl.read_csv(output, infer_schema_length=0)
-            # .with_row_index(name="id")
-            # .select("id", "cases", "all_cause")
-        )
-        assert df_in.shape == df_out.shape
-
-        df = df_in.join(
-            df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
-        ).filter(
-            (pl.col("cases") == f"<={fill_range[1]}")
-            | (pl.col("all_cause") == f"<={fill_range[1]}")
-        )
-        assert (
-            df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
-            is False
-        )
-        assert (
-            df.select("cases_imputed")
-            .cast(pl.Int64)
-            .select(
-                pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all()
-            )
-            .item()
-            is True
-        )
-
-
-def test_impute_dir_force(tmp_path, test_data_dir):
-    out_dir = Path(tmp_path) / "test_impute_dir_output"
-    out_dir.mkdir()
-    fill_range = (1, 5)
-
-    inp_files = test_data_dir.glob("*.csv")
-    for file in inp_files:
-        out_file = out_dir / file.name
-        out_file.touch()
-
-    result = runner.invoke(
-        app,
-        [
-            "impute",
-            "dir",
-            str(test_data_dir),
-            str(out_dir),
-            "-c",
-            "cases",
-            "-f",
-            f"<={fill_range[1]}",
-            "-r",
-            f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
-            "--force",
-        ],
-    )
-    assert result.exit_code == 0
-    assert out_dir.is_dir()
-    for i in range(5):
-        f = out_dir / f"test_impute_data_{i}.csv"
-        assert f.is_file() is True
-
-    for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
-        df_in = (
-            pl.read_csv(input, infer_schema_length=0)
-            # .with_row_index(name="id")
-            # .select("id", "cases", "all_cause")
-        )
-        df_out = (
-            pl.read_csv(output, infer_schema_length=0)
-            # .with_row_index(name="id")
-            # .select("id", "cases", "all_cause")
-        )
-        assert df_in.shape == df_out.shape
-
-        df = df_in.join(
-            df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
-        ).filter(
-            (pl.col("cases") == f"<={fill_range[1]}")
-            | (pl.col("all_cause") == f"<={fill_range[1]}")
-        )
-        assert (
-            df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
-            is False
-        )
-        assert (
-            df.select("cases_imputed")
-            .cast(pl.Int64)
-            .select(
-                pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all()
-            )
-            .item()
-            is True
-        )
-
-
-def test_impute_dir_suffix(tmp_path, test_data_dir):
-    out_dir = Path(tmp_path) / "test_impute_dir_output"
-    out_dir.mkdir()
-    fill_range = (1, 5)
-    suffix = "imputed"
-
-    result = runner.invoke(
-        app,
-        [
-            "impute",
-            "dir",
-            str(test_data_dir),
-            str(out_dir),
-            "-c",
-            "cases",
-            "-f",
-            f"<={fill_range[1]}",
-            "-r",
-            f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
-            "-x",
-            suffix,
-        ],
-    )
-    assert result.exit_code == 0
-    assert out_dir.is_dir() is True
-
-    for i in range(5):
-        f = out_dir / f"test_impute_data_{i}_{suffix}.csv"
-        assert f.is_file() is True
-
-    for input, output in zip(test_data_dir.iterdir(), out_dir.iterdir()):
-        df_in = (
-            pl.read_csv(input, infer_schema_length=0)
-            # .with_row_index(name="id")
-            # .select("id", "cases", "all_cause")
-        )
-        df_out = (
-            pl.read_csv(output, infer_schema_length=0)
-            # .with_row_index(name="id")
-            # .select("id", "cases", "all_cause")
-        )
-        assert df_in.shape == df_out.shape
-
-        df = df_in.join(
-            df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
-        ).filter(
-            (pl.col("cases") == f"<={fill_range[1]}")
-            | (pl.col("all_cause") == f"<={fill_range[1]}")
-        )
-        assert (
-            df.select((pl.col("cases_imputed") == f"<={fill_range[1]}").any()).item()
-            is False
-        )
-        assert (
-            df.select("cases_imputed")
-            .cast(pl.Int64)
-            .select(
-                pl.col("cases_imputed").is_between(fill_range[0], fill_range[1]).all()
-            )
-            .item()
-            is True
-        )
 
 
 def test_impute_pair(tmp_path, test_data):
@@ -503,34 +286,31 @@ def test_impute_pair(tmp_path, test_data):
             "impute",
             "pair",
             str(test_data),
-            str(out_file),
-            "-c",
-            "cases,all_cause",
+            "-n",
+            "cases",
+            "-d",
+            "all_cause",
             "-f",
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
+            "-o",
+            str(out_file),
         ],
     )
     assert result.exit_code == 0
     assert out_file.is_file() is True
 
-    df_in = (
-        pl.read_csv(test_data, infer_schema_length=0)
-        # .with_row_index(name="id")
-        # .select("id", "cases", "all_cause")
-    )
-    df_out = (
-        pl.read_csv(out_file, infer_schema_length=0)
-        # .with_row_index(name="id")
-        # .select("id", "cases", "all_cause")
-    )
+    df_in = pl.read_csv(test_data, infer_schema_length=0)
+    df_out = pl.read_csv(out_file, infer_schema_length=0)
     assert df_in.shape == df_out.shape
 
     df = df_in.join(
-        df_out, on=["county", "year_week"], how="inner", suffix="_imputed"
+        df_out,
+        on=["county", "year_week"],
+        how="inner",
+        suffix="_imputed",
+        validate="1:1",
     ).filter(
         (pl.col("cases") == f"<={fill_range[1]}")
         | (pl.col("all_cause") == f"<={fill_range[1]}")
@@ -570,7 +350,6 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
     num_file = test_data_sep / "test_impute_numerator_only_data.csv"
     out_file = tmp_path / "numerator_output.csv"
     denom_file = test_data_sep / "test_impute_denom_only_data.csv"
-    sep_cols = "county,year_week"
     fill_range = (1, 5)
 
     result = runner.invoke(
@@ -579,19 +358,22 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
             "impute",
             "pair",
             str(num_file),
-            str(out_file),
-            "-c",
-            "cases,all_cause",
+            "-n",
+            "cases",
+            "-d",
+            "all_cause",
             "-f",
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
+            "-o",
+            str(out_file),
             "--sep-denom",
             str(denom_file),
-            "--sep-cols",
-            sep_cols,
+            "--sep-col",
+            "county",
+            "--sep-col",
+            "year_week",
         ],
     )
     assert result.exit_code == 0
@@ -599,6 +381,7 @@ def test_impute_pair_sep(tmp_path, test_data_sep):
 
     df_num = pl.read_csv(num_file, infer_schema_length=0)
     df_out = pl.read_csv(out_file, infer_schema_length=0)
+
     assert df_num.shape == df_out.shape
     assert (
         df_out.select((pl.col("cases") == f"<={fill_range[1]}").any()).item() is False
@@ -626,7 +409,6 @@ def test_impute_pair_join_fails(tmp_path, test_data_sep):
     num_file = test_data_sep / "test_impute_numerator_only_data.csv"
     out_file = tmp_path / "numerator_output.csv"
     denom_file = test_data_sep / "test_impute_denom_only_join_fails.csv"
-    sep_cols = "county,year_week"
     fill_range = (1, 5)
 
     result = runner.invoke(
@@ -635,19 +417,22 @@ def test_impute_pair_join_fails(tmp_path, test_data_sep):
             "impute",
             "pair",
             str(num_file),
-            str(out_file),
-            "-c",
-            "cases,all_cause",
+            "-n",
+            "cases",
+            "-d",
+            "all_cause",
             "-f",
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
+            "-o",
+            str(out_file),
             "--sep-denom",
             str(denom_file),
-            "--sep-cols",
-            sep_cols,
+            "--sep-col",
+            "county",
+            "--sep-col",
+            "year_week",
         ],
     )
     assert result.exit_code == 1
@@ -657,7 +442,6 @@ def test_impute_pair_sep_output(tmp_path, test_data_sep):
     num_file = test_data_sep / "test_impute_numerator_only_data.csv"
     out_file = tmp_path / "test_impute_sep_files_numerator_output.csv"
     denom_file = test_data_sep / "test_impute_denom_only_data.csv"
-    sep_cols = "county,year_week"
     sep_out = tmp_path / "test_impute_sep_files_denom_output.csv"
     fill_range = (1, 5)
 
@@ -667,19 +451,22 @@ def test_impute_pair_sep_output(tmp_path, test_data_sep):
             "impute",
             "pair",
             str(num_file),
-            str(out_file),
-            "-c",
-            "cases,all_cause",
+            "-n",
+            "cases",
+            "-d",
+            "all_cause",
             "-f",
             f"<={fill_range[1]}",
             "-r",
             f"{fill_range[0]},{fill_range[1]}",
-            "-s",
-            "8",
+            "-o",
+            str(out_file),
             "--sep-denom",
             str(denom_file),
-            "--sep-cols",
-            sep_cols,
+            "--sep-col",
+            "county",
+            "--sep-col",
+            "year_week",
             "--sep-out",
             str(sep_out),
         ],
