@@ -65,6 +65,10 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
     If `dtype` is specified, will attempt to cast the filled columns
     to that Polars type. Only supports Polars integer and float types.
     """
+    n_cols = len(columns)
+    if n_cols == 0:
+        raise ValueError("Must specify at least one column to impute")
+
     for col in columns:
         if col not in df.lazy().collect_schema().names():
             raise ValueError(f"Column {col} doesn't exist")
@@ -76,8 +80,22 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
 
     fill_range_int = _parse_fill_range(fill_range)
 
-    n_cols = len(columns)
-    if n_cols > 1:
+    if n_cols == 1:
+        column = columns[0]
+        # NOTE: this implementation and numpy implementation for filling values are roughly the same speed
+        # with this Polars-only impl barely faster
+        df = df.with_columns(
+            pl.when(pl.col(column) == fill_flag)
+            .then(
+                pl.int_range(fill_range_int.lb, fill_range_int.ub + 1).sample(
+                    pl.len(), with_replacement=True, seed=seed
+                )
+            )
+            .otherwise(pl.col(column))
+            .alias(column)
+            .cast(dtype)
+        )
+    else:
         rng = np.random.default_rng(seed)
         n_rows = df.lazy().select(pl.len()).collect().item()
         # must gen enough numbers for all columns up-front, otherwise they get reused
@@ -97,21 +115,6 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
                 .alias(col)
                 .cast(dtype)
             )
-    else:
-        column = columns[0]
-        # NOTE: this implementation and numpy implementation for filling values are roughly the same speed
-        # with this Polars-only impl barely faster
-        df = df.with_columns(
-            pl.when(pl.col(column) == fill_flag)
-            .then(
-                pl.int_range(fill_range_int.lb, fill_range_int.ub + 1).sample(
-                    pl.len(), with_replacement=True, seed=seed
-                )
-            )
-            .otherwise(pl.col(column))
-            .alias(column)
-            .cast(dtype)
-        )
 
     return df
 

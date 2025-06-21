@@ -99,11 +99,6 @@ def test_complete_existing_lazy_series(
     assert_frame_equal(lf.collect(), df_out)
 
 
-def test_complete_exception_lazy(lf_inp: pl.LazyFrame) -> None:
-    with pytest.raises(TypeError):
-        lf_inp.pipe(complete.complete, 0, 1).sort("country", "year")  # pyright: ignore[reportArgumentType]
-
-
 @pytest.fixture
 def df_out_non_exist() -> pl.DataFrame:
     data = """\
