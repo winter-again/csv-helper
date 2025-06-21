@@ -2,7 +2,7 @@
 
 ![Tests](https://github.com/winter-again/csv-helper/workflows/Tests/badge.svg)
 
-A simple library and CLI for working with CSV data.
+A simple library (built around [Polars](https://github.com/pola-rs/polars)) and CLI for working with CSV data.
 
 ## Installation
 
@@ -14,5 +14,5 @@ pip install git+https://git@github.com/winter-again/csv-helper
 pip install git+ssh://git@github.com/winter-again/csv-helper
 
 # designate specific version tag or branch
-pip install git+ssh://git@github.com/winter-again/csv-helper.git@v0.1.0
+pip install git+ssh://git@github.com/winter-again/csv-helper.git@v0.3.0
 ```
