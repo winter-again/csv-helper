@@ -2,7 +2,7 @@
 
 ![Tests](https://github.com/winter-again/csv-helper/workflows/Tests/badge.svg)
 
-A simple library (built around [Polars](https://github.com/pola-rs/polars)) and CLI for working with CSV data.
+A simple library (relying on [Polars](https://github.com/pola-rs/polars)) and CLI for working with CSV data.
 
 ## Installation
 
