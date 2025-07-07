@@ -16,8 +16,8 @@ dependencies = [
 csv-helper = "csv_helper.cli:app"
 
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["uv_build>=0.7.19,<0.8.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [

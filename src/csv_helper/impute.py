@@ -196,6 +196,8 @@ def column_pair[T: (pl.DataFrame, pl.LazyFrame)](
     ).with_columns(
         # NOTE: sometimes oddly high mem consumption b/c of pl.int_ranges(),
         # but not sure how to improve
+        # TODO: check use of int_ranges + sampling and context
+        # might need to sample in sep context
         pl.when(
             (pl.col(numerator) == fill_flag)
             & (pl.col(denominator) <= fill_range_int.ub)
