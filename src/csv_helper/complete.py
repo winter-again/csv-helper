@@ -11,11 +11,11 @@ def complete[T: (pl.DataFrame, pl.LazyFrame)](df: T, *columns: str | pl.Series) 
     those Series can specify the full set of possible values. The Series must be
     named after an existing column.
     """
-    cols = []
+    cols: list[pl.Expr | pl.Series] = []
     for col in columns:
         if isinstance(col, str):
             cols.append(pl.col(col).unique().implode())
-        elif isinstance(col, pl.Series):
+        elif isinstance(col, pl.Series):  # pyright: ignore[reportUnnecessaryIsInstance]
             cols.append(col.unique().implode())
         else:
             raise TypeError(
@@ -31,7 +31,6 @@ def complete[T: (pl.DataFrame, pl.LazyFrame)](df: T, *columns: str | pl.Series) 
         df,
         on=col_names,
         how="left",
-        coalesce=True,
         validate="1:1",
     )
 

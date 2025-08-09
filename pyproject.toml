@@ -1,6 +1,6 @@
 [project]
 name = "csv-helper"
-version = "0.3.0"
+version = "0.3.1"
 description = "A simple library and CLI for working with CSV data"
 readme = "README.md"
 authors = [{ name = "Andrew Tiu", email = "andrew.tiu88@gmail.com" }]
@@ -18,6 +18,11 @@ csv-helper = "csv_helper.cli:app"
 [build-system]
 requires = ["uv_build>=0.7.19,<0.8.0"]
 build-backend = "uv_build"
+
+[tool.basedpyright]
+include = ["src"]
+pythonVersion = "3.13"
+pythonPlatform = "Linux"
 
 [dependency-groups]
 dev = [

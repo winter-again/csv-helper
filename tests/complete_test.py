@@ -80,7 +80,7 @@ def test_complete_existing_series(df_inp: pl.DataFrame, df_out: pl.DataFrame) ->
 
 def test_complete_exception(df_inp: pl.DataFrame) -> None:
     with pytest.raises(TypeError):
-        df_inp.pipe(complete.complete, 0, 1).sort("country", "year")  # pyright: ignore[reportArgumentType]
+        df_inp.pipe(complete.complete, 0, 1).sort("country", "year")  # pyright: ignore[reportArgumentType, reportUnusedCallResult]
 
 
 def test_complete_existing_lazy(lf_inp: pl.LazyFrame, df_out: pl.DataFrame) -> None:

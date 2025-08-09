@@ -97,7 +97,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
         )
     else:
         rng = np.random.default_rng(seed)
-        n_rows = df.lazy().select(pl.len()).collect().item()
+        n_rows = df.lazy().select(pl.len()).collect().item()  # pyright: ignore[reportAny]
         # must gen enough numbers for all columns up-front, otherwise they get reused
         shape = (n_cols, n_rows)
         fill_nums = rng.integers(
@@ -107,7 +107,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
             endpoint=True,  # include ub in sample
         )
 
-        for col, num in zip(columns, fill_nums):
+        for col, num in zip(columns, fill_nums):  # pyright: ignore[reportAny]
             df = df.with_columns(
                 pl.when(pl.col(col) == fill_flag)
                 .then(pl.lit(num))
@@ -122,7 +122,7 @@ def columns[T: (pl.DataFrame, pl.LazyFrame)](
 def _fill_flag_exists[T: (pl.DataFrame, pl.LazyFrame)](
     df: T, column: str, fill_flag: str
 ) -> bool:
-    return df.lazy().select((pl.col(column) == fill_flag).any()).collect().item()
+    return df.lazy().select((pl.col(column) == fill_flag).any()).collect().item()  # pyright: ignore[reportAny]
 
 
 class _FillRange(NamedTuple):
